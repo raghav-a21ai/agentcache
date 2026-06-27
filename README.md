@@ -20,9 +20,9 @@ AgentCache fixes this. It's a persistent knowledge layer that:
 npm install -g agentcache
 ```
 
-That's it. No `init`, no per-project setup, no config files.
+Done. Start a new session in any IDE. AgentCache is already running.
 
-On install, AgentCache automatically:
+No `init`. No `setup`. No config. No second command. The install itself:
 1. Creates `~/.loop/loop.db` (your knowledge store)
 2. Detects installed IDEs (Claude Code, Cursor, Roo Code, Windsurf, Continue, Codex)
 3. Registers itself as an MCP server in each
@@ -90,12 +90,16 @@ AgentCache exposes 8 tools via the Model Context Protocol:
 ## CLI Commands
 
 ```bash
-agentcache setup           # Re-detect IDEs and register (runs automatically on install)
-agentcache serve           # Start MCP server (IDEs spawn this automatically)
 agentcache status          # Show knowledge stats for current project
-agentcache compile-session # Queue transcript for compilation (Stop hook)
-agentcache discover        # Discover uncompiled transcripts (SessionStart hook)
-agentcache enforce         # Policy enforcement (PreToolUse hook)
+agentcache setup           # Re-register with IDEs (only if postinstall failed)
+```
+
+Internal commands (called by hooks automatically, never by users):
+```bash
+agentcache serve           # MCP server (IDEs spawn this)
+agentcache compile-session # Stop hook
+agentcache discover        # SessionStart hook
+agentcache enforce         # PreToolUse hook
 ```
 
 ## Design Principles
