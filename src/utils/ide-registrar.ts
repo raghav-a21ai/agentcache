@@ -117,27 +117,24 @@ function registerMcpJson(ide: IdeConfig): boolean {
   if (isVscodeExtensionIde(ide)) {
     const nodeBin = findNodeBinary();
     const script = findAgentcacheScript();
-    // Always update alwaysAllow to handle tool rename migrations
     config.mcpServers.agentcache = {
       command: nodeBin,
       args: [script, "serve"],
       alwaysAllow: ALL_TOOLS,
       disabled: false,
     };
-  } else if (!existing) {
-    // Cursor, Windsurf — GUI apps may not inherit shell PATH
+  } else {
+    // Cursor, Windsurf — always update to ensure absolute path
     const agentcacheBin = findAgentcacheScript();
     config.mcpServers.agentcache = {
       command: agentcacheBin,
       args: ["serve"],
     };
-  } else {
-    return false;
   }
 
   mkdirSync(dirname(ide.mcpConfigPath), { recursive: true });
   writeFileSync(ide.mcpConfigPath, JSON.stringify(config, null, 2));
-  return !existing;
+  return true;
 }
 
 function registerContinue(ide: IdeConfig): boolean {
