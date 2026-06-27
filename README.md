@@ -137,21 +137,15 @@ AgentCache prevents knowledge from growing unbounded:
 | IDE | MCP | Auto-Approve | Transcript Recovery | Hooks |
 |-----|-----|-------------|--------------------|----|
 | Claude Code | Yes | Yes (automatic) | Full (JSONL) | Stop, SessionStart, PreToolUse |
-| Cursor | Yes | **Manual** (see below) | Incremental only | — |
+| Cursor | Yes | Yes (automatic) | Incremental only | — |
 | Roo Code | Yes | Yes (automatic) | Incremental only | — |
 | Windsurf | Yes | Yes (automatic) | Incremental only | — |
 | Continue | Yes | Yes (automatic) | Full (JSON) | — |
 | Codex | Yes | Yes (automatic) | Incremental only | — |
 
+All IDEs are fully auto-approved at install time — no manual steps required.
+
 "Incremental only" means if the agent submits observations during the session, they're saved. If the session terminates before any submission, those observations are lost (no transcript access).
-
-### Cursor: Enable Auto-Approve
-
-Cursor does not support programmatic auto-approve for MCP tools. After installing, you need to manually enable it once:
-
-1. Open Cursor Settings → MCP
-2. Find **agentcache** in the server list
-3. Set tool approval to **"Always allow"** (or enable "Yolo mode" in Cursor settings for all tools)
 
 ## Data Storage
 
@@ -190,6 +184,41 @@ Projects are identified by a hash of their full filesystem path, not just the fo
 - `/work/api` and `/personal/api` are different projects
 - Renaming a folder creates a new project identity
 - Knowledge doesn't leak between same-named projects
+
+## Roadmap
+
+### More IDEs & Coding Agents
+
+| Platform | Status |
+|----------|--------|
+| Claude Code | Supported |
+| Cursor | Supported |
+| Roo Code | Supported |
+| Windsurf | Supported |
+| Continue | Supported |
+| Codex | Supported |
+| Goose (Block) | Coming soon |
+| Aider | Coming soon |
+| GitHub Copilot | Coming soon |
+| Zed AI | Coming soon |
+
+Any tool that supports MCP can use AgentCache today via `agentcache serve`. Native integrations for the above are planned to ensure zero-config setup.
+
+### Native Plugins
+
+Marketplace listings and deeper UI integrations for all supported IDEs — surfacing knowledge inline, showing compilation status, and providing one-click management of rules and decisions.
+
+### Team Knowledge Sharing
+
+Share compiled knowledge across your team. Rules and lessons that work for one developer benefit everyone.
+
+### Cloud Sync
+
+Sync your knowledge database across machines. Same developer, different computers, same knowledge.
+
+### Analytics Dashboard
+
+Visibility into what AgentCache is learning — compilation stats, knowledge growth, most-referenced rules, and session coverage.
 
 ## Contributing
 
