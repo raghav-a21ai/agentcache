@@ -1,0 +1,6 @@
+[
+  { "type": "rule", "content": "Always use path aliases instead of relative imports", "sourceQuote": "Use path aliases, never relative imports", "confidence": "high" },
+  { "type": "lesson", "content": "Database migration failed because we didn't run dry-run first", "sourceQuote": "the migration broke prod because we skipped dry-run", "confidence": "high" },
+  { "type": "decision", "content": "Using repository pattern for all data access layers", "sourceQuote": "Let's use repository pattern to decouple business logic", "confidence": "medium" },
+  { "type": "context", "content": "Working on user authentication flow, left off at JWT refresh tokens", "sourceQuote": "I'll continue with the refresh token logic next session", "confidence": "high" }
+]
