@@ -3,7 +3,14 @@ import { join, dirname } from "path";
 import { homedir } from "os";
 import type { IdeConfig } from "./ide-detector.js";
 
-const MCP_ENTRY = {
+const MCP_ENTRY_STDIO = {
+  type: "stdio",
+  command: "agentcache",
+  args: ["serve"],
+  env: {},
+};
+
+const MCP_ENTRY_SIMPLE = {
   command: "agentcache",
   args: ["serve"],
 };
@@ -12,15 +19,16 @@ export function registerMcpServer(ide: IdeConfig): boolean {
   if (!ide.detected) return false;
 
   if (ide.mcpConfigFormat === "claude-settings") {
-    let settings: Record<string, any> = {};
-    if (existsSync(ide.mcpConfigPath)) {
-      try { settings = JSON.parse(readFileSync(ide.mcpConfigPath, "utf-8")); } catch { settings = {}; }
+    // Claude Code CLI reads MCP servers from ~/.claude.json, not ~/.claude/settings.json
+    const claudeJsonPath = join(homedir(), ".claude.json");
+    let config: Record<string, any> = {};
+    if (existsSync(claudeJsonPath)) {
+      try { config = JSON.parse(readFileSync(claudeJsonPath, "utf-8")); } catch { config = {}; }
     }
-    if (!settings.mcpServers) settings.mcpServers = {};
-    if (settings.mcpServers.agentcache) return false;
-    settings.mcpServers.agentcache = MCP_ENTRY;
-    mkdirSync(dirname(ide.mcpConfigPath), { recursive: true });
-    writeFileSync(ide.mcpConfigPath, JSON.stringify(settings, null, 2));
+    if (!config.mcpServers) config.mcpServers = {};
+    if (config.mcpServers.agentcache) return false;
+    config.mcpServers.agentcache = MCP_ENTRY_STDIO;
+    writeFileSync(claudeJsonPath, JSON.stringify(config, null, 2));
     return true;
   }
 
@@ -31,7 +39,7 @@ export function registerMcpServer(ide: IdeConfig): boolean {
     }
     if (!config.mcpServers) config.mcpServers = {};
     if (config.mcpServers.agentcache) return false;
-    config.mcpServers.agentcache = MCP_ENTRY;
+    config.mcpServers.agentcache = MCP_ENTRY_SIMPLE;
     mkdirSync(dirname(ide.mcpConfigPath), { recursive: true });
     writeFileSync(ide.mcpConfigPath, JSON.stringify(config, null, 2));
     return true;
