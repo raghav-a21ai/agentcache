@@ -44,7 +44,7 @@ export async function startMcpServer(): Promise<void> {
     { name: "agentcache", version: "0.1.0" },
     {
       capabilities: { tools: {} },
-      instructions: "AgentCache is your knowledge cache. At the START of every session, call agentcache_inject_context to load compiled rules, lessons, decisions, and context. Submit observations INCREMENTALLY via agentcache_compile_submit as you learn them — do not wait until session end.",
+      instructions: "AgentCache is your knowledge cache. At the START of every session, call inject_context to load compiled rules, lessons, decisions, and context. Submit observations INCREMENTALLY via compile_submit as you learn them — do not wait until session end.",
     }
   );
 
@@ -59,7 +59,7 @@ export async function startMcpServer(): Promise<void> {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {
-        name: "agentcache_inject_context",
+        name: "inject_context",
         description: "Get compiled engineering knowledge for this project. Returns global rules/lessons (apply everywhere) + project-specific decisions/context. Call this at the START of every session.",
         inputSchema: {
           type: "object" as const,
@@ -70,7 +70,7 @@ export async function startMcpServer(): Promise<void> {
         },
       },
       {
-        name: "agentcache_compile_submit",
+        name: "compile_submit",
         description: "Submit observations extracted from your session. Call this INCREMENTALLY — each time you learn a rule, lesson, decision, or context item. Do NOT batch until end of session; sessions can terminate without warning.",
         inputSchema: {
           type: "object" as const,
@@ -96,12 +96,12 @@ export async function startMcpServer(): Promise<void> {
         },
       },
       {
-        name: "agentcache_compile_cluster",
-        description: "Submit clustering decisions when agentcache_compile_submit returns needs_clustering. Determines whether observations create new knowledge or relate to existing items.",
+        name: "compile_cluster",
+        description: "Submit clustering decisions when compile_submit returns needs_clustering. Determines whether observations create new knowledge or relate to existing items.",
         inputSchema: {
           type: "object" as const,
           properties: {
-            sessionId: { type: "string", description: "Session ID from agentcache_compile_submit response" },
+            sessionId: { type: "string", description: "Session ID from compile_submit response" },
             clusters: {
               type: "array",
               items: {
@@ -121,8 +121,8 @@ export async function startMcpServer(): Promise<void> {
         },
       },
       {
-        name: "agentcache_compile_extract",
-        description: "For PREVIOUS sessions stored as transcript files. Reads a queued transcript and returns an extraction prompt for you to process. After processing, call agentcache_compile_submit with the results.",
+        name: "compile_extract",
+        description: "For PREVIOUS sessions stored as transcript files. Reads a queued transcript and returns an extraction prompt for you to process. After processing, call compile_submit with the results.",
         inputSchema: {
           type: "object" as const,
           properties: {
@@ -132,7 +132,7 @@ export async function startMcpServer(): Promise<void> {
         },
       },
       {
-        name: "agentcache_enforce",
+        name: "enforce",
         description: "Check if a tool call is allowed by AgentCache policy rules. Call this BEFORE executing risky operations (file deletions, force pushes, etc). Returns allow or block with reason.",
         inputSchema: {
           type: "object" as const,
@@ -145,7 +145,7 @@ export async function startMcpServer(): Promise<void> {
         },
       },
       {
-        name: "agentcache_save_observation",
+        name: "save_observation",
         description: "Save a single observation immediately with USER authority (never overwritten by compiler). Use for important rules or decisions that should persist permanently.",
         inputSchema: {
           type: "object" as const,
@@ -160,7 +160,7 @@ export async function startMcpServer(): Promise<void> {
         },
       },
       {
-        name: "agentcache_get_knowledge",
+        name: "get_knowledge",
         description: "Query knowledge items from AgentCache knowledge database.",
         inputSchema: {
           type: "object" as const,
@@ -174,7 +174,7 @@ export async function startMcpServer(): Promise<void> {
         },
       },
       {
-        name: "agentcache_deprecate_knowledge",
+        name: "deprecate_knowledge",
         description: "Mark a knowledge item as deprecated. Use when a rule, lesson, or decision is no longer valid. Works on both auto-compiled and user-saved items.",
         inputSchema: {
           type: "object" as const,
@@ -199,7 +199,7 @@ export async function startMcpServer(): Promise<void> {
 
     try {
       switch (request.params.name) {
-        case "agentcache_inject_context": {
+        case "inject_context": {
           const args = (request.params.arguments || {}) as { project?: string };
           const project = args.project || detectedProject;
           const items = repo.getKnowledgeForContext(project);
@@ -227,15 +227,15 @@ export async function startMcpServer(): Promise<void> {
 
           const pendingCount = repo.getPendingCount();
           if (pendingCount > 0) {
-            output = `<!-- ${pendingCount} previous session(s) pending compilation. Call agentcache_compile_extract to process. -->\n\n` + output;
+            output = `<!-- ${pendingCount} previous session(s) pending compilation. Call compile_extract to process. -->\n\n` + output;
           }
 
-          output += "\n---\nIMPORTANT: Submit observations incrementally as they happen during this session.\nWhen you learn something (rule, lesson, decision, context), call agentcache_compile_submit immediately.\nDo NOT wait until the end — sessions can terminate without warning.\n";
+          output += "\n---\nIMPORTANT: Submit observations incrementally as they happen during this session.\nWhen you learn something (rule, lesson, decision, context), call compile_submit immediately.\nDo NOT wait until the end — sessions can terminate without warning.\n";
 
           return { content: [{ type: "text" as const, text: output.trim() }] };
         }
 
-        case "agentcache_compile_submit": {
+        case "compile_submit": {
           const args = request.params.arguments as { observations: any[]; project?: string };
           const project = args.project || detectedProject;
           const sessionId = `sess_${randomUUID().slice(0, 8)}`;
@@ -258,7 +258,7 @@ export async function startMcpServer(): Promise<void> {
           };
         }
 
-        case "agentcache_compile_cluster": {
+        case "compile_cluster": {
           const args = request.params.arguments as { sessionId: string; clusters: any[]; project?: string };
           const project = args.project || detectedProject;
           const responseText = JSON.stringify({ clusters: args.clusters });
@@ -266,7 +266,7 @@ export async function startMcpServer(): Promise<void> {
           return { content: [{ type: "text" as const, text: JSON.stringify({ status: "complete", diagnostics: result.diagnostics }) }] };
         }
 
-        case "agentcache_compile_extract": {
+        case "compile_extract": {
           const args = (request.params.arguments || {}) as { project?: string };
           const entry = repo.popPendingTranscript();
           if (!entry) {
@@ -289,7 +289,7 @@ export async function startMcpServer(): Promise<void> {
           return { content: [{ type: "text" as const, text: JSON.stringify({ sessionId: state.sessionId, prompt: state.prompt }) }] };
         }
 
-        case "agentcache_enforce": {
+        case "enforce": {
           const args = request.params.arguments as { tool_name: string; tool_input?: Record<string, unknown>; project?: string };
           const project = args.project || detectedProject;
           const input = { tool_name: args.tool_name, tool_input: args.tool_input || {} };
@@ -297,7 +297,7 @@ export async function startMcpServer(): Promise<void> {
           return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
         }
 
-        case "agentcache_save_observation": {
+        case "save_observation": {
           const args = request.params.arguments as { type: string; content: string; enforce?: boolean; scope?: string; project?: string };
           const project = args.project || detectedProject;
           const scope = (args.scope || defaultScope(args.type)) as "global" | "project";
@@ -351,7 +351,7 @@ export async function startMcpServer(): Promise<void> {
           return { content: [{ type: "text" as const, text: JSON.stringify({ saved: true, scope }) }] };
         }
 
-        case "agentcache_get_knowledge": {
+        case "get_knowledge": {
           const args = (request.params.arguments || {}) as { type?: string; status?: string; scope?: string; project?: string };
           const project = args.project || detectedProject;
           const items = repo.getKnowledgeItems(project, {
@@ -363,7 +363,7 @@ export async function startMcpServer(): Promise<void> {
           return { content: [{ type: "text" as const, text: summary || "No knowledge items found." }] };
         }
 
-        case "agentcache_deprecate_knowledge": {
+        case "deprecate_knowledge": {
           const args = request.params.arguments as { id: string; reason: string };
           const item = repo.getKnowledgeItem(args.id);
           if (!item) {

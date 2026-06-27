@@ -58,8 +58,8 @@ No `init`. No `setup`. No config. No second command. The install itself:
 
 ### The Cycle
 
-1. **Session starts** — agent calls `agentcache_inject_context` → gets compiled rules, lessons, decisions
-2. **During session** — agent calls `agentcache_compile_submit` incrementally as it learns things
+1. **Session starts** — agent calls `inject_context` → gets compiled rules, lessons, decisions
+2. **During session** — agent calls `compile_submit` incrementally as it learns things
 3. **Session ends** — knowledge is already saved. If agent didn't submit (abrupt exit), transcript recovery handles it next session.
 
 ### Knowledge Types
@@ -75,18 +75,18 @@ Rules and lessons are **global** — they apply to all your projects. Decisions 
 
 ## MCP Tools
 
-AgentCache exposes 8 tools via the Model Context Protocol:
+AgentCache exposes 8 tools via the Model Context Protocol (prefixed as `mcp--agentcache--<tool>` in IDEs):
 
 | Tool | Purpose |
 |------|---------|
-| `agentcache_inject_context` | Load compiled knowledge at session start |
-| `agentcache_compile_submit` | Submit observations incrementally during session |
-| `agentcache_compile_cluster` | Resolve clustering when observations overlap existing knowledge |
-| `agentcache_compile_extract` | Process queued transcripts from previous sessions |
-| `agentcache_enforce` | Check tool calls against enforced policy rules |
-| `agentcache_save_observation` | Save a permanent observation (USER authority, never auto-deprecated) |
-| `agentcache_get_knowledge` | Query the knowledge database |
-| `agentcache_deprecate_knowledge` | Mark knowledge as deprecated when it's no longer valid |
+| `inject_context` | Load compiled knowledge at session start |
+| `compile_submit` | Submit observations incrementally during session |
+| `compile_cluster` | Resolve clustering when observations overlap existing knowledge |
+| `compile_extract` | Process queued transcripts from previous sessions |
+| `enforce` | Check tool calls against enforced policy rules |
+| `save_observation` | Save a permanent observation (USER authority, never auto-deprecated) |
+| `get_knowledge` | Query the knowledge database |
+| `deprecate_knowledge` | Mark knowledge as deprecated when it's no longer valid |
 
 ## CLI Commands
 

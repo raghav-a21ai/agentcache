@@ -26,14 +26,14 @@ function isVscodeExtensionIde(ide: IdeConfig): boolean {
 }
 
 const ALL_TOOLS = [
-  "agentcache_inject_context",
-  "agentcache_compile_submit",
-  "agentcache_compile_cluster",
-  "agentcache_compile_extract",
-  "agentcache_enforce",
-  "agentcache_save_observation",
-  "agentcache_get_knowledge",
-  "agentcache_deprecate_knowledge",
+  "inject_context",
+  "compile_submit",
+  "compile_cluster",
+  "compile_extract",
+  "enforce",
+  "save_observation",
+  "get_knowledge",
+  "deprecate_knowledge",
 ];
 
 export function registerMcpServer(ide: IdeConfig): boolean {
@@ -86,18 +86,20 @@ function registerClaudeCode(): boolean {
     }
     if (!settings.permissions) settings.permissions = {};
     if (!settings.permissions.allow) settings.permissions.allow = [];
-    const allowList = settings.permissions.allow as string[];
+    let allowList = settings.permissions.allow as string[];
+
+    // Remove stale old-format permissions (loop_* and agentcache_* prefixed)
+    allowList = allowList.filter(p => !p.startsWith("mcp__agentcache__loop_") && !p.startsWith("mcp__agentcache__agentcache_"));
+    settings.permissions.allow = allowList;
+
+    // Add current permissions
     const mcpPerms = ALL_TOOLS.map(t => `mcp__agentcache__${t}`);
-    let permsUpdated = false;
     for (const perm of mcpPerms) {
       if (!allowList.includes(perm)) {
         allowList.push(perm);
-        permsUpdated = true;
       }
     }
-    if (permsUpdated) {
-      writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-    }
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
   }
 
   return serverRegistered;
