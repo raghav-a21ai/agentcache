@@ -6,7 +6,7 @@ export interface IdeConfig {
   name: string;
   detected: boolean;
   mcpConfigPath: string;
-  mcpConfigFormat: "claude-settings" | "mcp-json" | "yaml";
+  mcpConfigFormat: "claude-settings" | "mcp-json" | "continue-dir" | "codex-toml";
 }
 
 function getRooConfigPath(): string {
@@ -20,8 +20,19 @@ function getRooConfigPath(): string {
   return join(home, ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json");
 }
 
-function rooDetected(): boolean {
-  return existsSync(getRooConfigPath());
+function getWindsurfConfigPath(): string {
+  const home = homedir();
+  return join(home, ".codeium", "windsurf", "mcp_config.json");
+}
+
+function getContinueConfigPath(): string {
+  const home = homedir();
+  return join(home, ".continue", "mcpServers", "agentcache.json");
+}
+
+function getCodexConfigPath(): string {
+  const home = homedir();
+  return join(home, ".codex", "config.toml");
 }
 
 export function detectInstalledIdes(): IdeConfig[] {
@@ -41,27 +52,27 @@ export function detectInstalledIdes(): IdeConfig[] {
     },
     {
       name: "Roo Code",
-      detected: rooDetected(),
+      detected: existsSync(getRooConfigPath()),
       mcpConfigPath: getRooConfigPath(),
       mcpConfigFormat: "mcp-json",
     },
     {
       name: "Windsurf",
-      detected: existsSync(join(home, ".windsurf")),
-      mcpConfigPath: join(home, ".windsurf", "mcp.json"),
+      detected: existsSync(join(home, ".codeium", "windsurf")) || existsSync(join(home, ".windsurf")),
+      mcpConfigPath: getWindsurfConfigPath(),
       mcpConfigFormat: "mcp-json",
     },
     {
       name: "Continue",
       detected: existsSync(join(home, ".continue")),
-      mcpConfigPath: join(home, ".continue", "mcp.json"),
-      mcpConfigFormat: "mcp-json",
+      mcpConfigPath: getContinueConfigPath(),
+      mcpConfigFormat: "continue-dir",
     },
     {
       name: "Codex",
       detected: existsSync(join(home, ".codex")),
-      mcpConfigPath: join(home, ".codex", "mcp.json"),
-      mcpConfigFormat: "mcp-json",
+      mcpConfigPath: getCodexConfigPath(),
+      mcpConfigFormat: "codex-toml",
     },
   ];
 }

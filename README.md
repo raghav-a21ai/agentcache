@@ -133,16 +133,24 @@ AgentCache prevents knowledge from growing unbounded:
 
 ## Supported IDEs
 
-| IDE | MCP | Transcript Recovery | Hooks |
-|-----|-----|--------------------|----|
-| Claude Code | Yes | Full (JSONL) | Stop, SessionStart, PreToolUse |
-| Cursor | Yes | Incremental only | — |
-| Roo Code | Yes | Incremental only | — |
-| Windsurf | Yes | Incremental only | — |
-| Continue | Yes | Full (JSON) | — |
-| Codex | Yes | Incremental only | — |
+| IDE | MCP | Auto-Approve | Transcript Recovery | Hooks |
+|-----|-----|-------------|--------------------|----|
+| Claude Code | Yes | Yes (automatic) | Full (JSONL) | Stop, SessionStart, PreToolUse |
+| Cursor | Yes | **Manual** (see below) | Incremental only | — |
+| Roo Code | Yes | Yes (automatic) | Incremental only | — |
+| Windsurf | Yes | Yes (automatic) | Incremental only | — |
+| Continue | Yes | Yes (automatic) | Full (JSON) | — |
+| Codex | Yes | Yes (automatic) | Incremental only | — |
 
 "Incremental only" means if the agent submits observations during the session, they're saved. If the session terminates before any submission, those observations are lost (no transcript access).
+
+### Cursor: Enable Auto-Approve
+
+Cursor does not support programmatic auto-approve for MCP tools. After installing, you need to manually enable it once:
+
+1. Open Cursor Settings → MCP
+2. Find **agentcache** in the server list
+3. Set tool approval to **"Always allow"** (or enable "Yolo mode" in Cursor settings for all tools)
 
 ## Data Storage
 
