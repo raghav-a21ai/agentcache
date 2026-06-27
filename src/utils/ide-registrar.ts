@@ -4,7 +4,7 @@ import { homedir } from "os";
 import type { IdeConfig } from "./ide-detector.js";
 
 const MCP_ENTRY = {
-  command: "loop-eng",
+  command: "agentcache",
   args: ["serve"],
 };
 
@@ -17,8 +17,8 @@ export function registerMcpServer(ide: IdeConfig): boolean {
       try { settings = JSON.parse(readFileSync(ide.mcpConfigPath, "utf-8")); } catch { settings = {}; }
     }
     if (!settings.mcpServers) settings.mcpServers = {};
-    if (settings.mcpServers.loop) return false;
-    settings.mcpServers.loop = MCP_ENTRY;
+    if (settings.mcpServers.agentcache) return false;
+    settings.mcpServers.agentcache = MCP_ENTRY;
     mkdirSync(dirname(ide.mcpConfigPath), { recursive: true });
     writeFileSync(ide.mcpConfigPath, JSON.stringify(settings, null, 2));
     return true;
@@ -30,8 +30,8 @@ export function registerMcpServer(ide: IdeConfig): boolean {
       try { config = JSON.parse(readFileSync(ide.mcpConfigPath, "utf-8")); } catch { config = {}; }
     }
     if (!config.mcpServers) config.mcpServers = {};
-    if (config.mcpServers.loop) return false;
-    config.mcpServers.loop = MCP_ENTRY;
+    if (config.mcpServers.agentcache) return false;
+    config.mcpServers.agentcache = MCP_ENTRY;
     mkdirSync(dirname(ide.mcpConfigPath), { recursive: true });
     writeFileSync(ide.mcpConfigPath, JSON.stringify(config, null, 2));
     return true;
@@ -53,16 +53,16 @@ export function registerClaudeHooks(): boolean {
   const hooks = settings.hooks as Record<string, unknown[]>;
 
   const loopHooks: Record<string, unknown[]> = {
-    Stop: [{ matcher: "", hooks: [{ type: "command", command: "loop-eng compile-session" }] }],
-    SessionStart: [{ matcher: "", hooks: [{ type: "command", command: "loop-eng discover" }] }],
-    PreToolUse: [{ matcher: "", hooks: [{ type: "command", command: "loop-eng enforce" }] }],
+    Stop: [{ matcher: "", hooks: [{ type: "command", command: "agentcache compile-session" }] }],
+    SessionStart: [{ matcher: "", hooks: [{ type: "command", command: "agentcache discover" }] }],
+    PreToolUse: [{ matcher: "", hooks: [{ type: "command", command: "agentcache enforce" }] }],
   };
 
   let registered = false;
   for (const [event, hookConfig] of Object.entries(loopHooks)) {
     if (!hooks[event]) hooks[event] = [];
     const existing = hooks[event] as Array<{ hooks?: Array<{ command?: string }> }>;
-    const hasLoop = existing.some((h) => h.hooks?.some((hh) => hh.command?.includes("loop-eng")));
+    const hasLoop = existing.some((h) => h.hooks?.some((hh) => hh.command?.includes("agentcache")));
     if (!hasLoop) {
       hooks[event].push(...hookConfig);
       registered = true;

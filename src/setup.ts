@@ -16,7 +16,7 @@ export async function runSetup(): Promise<void> {
   console.log(`  Central DB: ${getDbPath()}\n`);
 
   if (detected.length === 0) {
-    console.log(`  No IDEs detected. MCP server can still be used manually: loop-eng serve\n`);
+    console.log(`  No IDEs detected. MCP server can still be used manually: agentcache serve\n`);
     return;
   }
 

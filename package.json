@@ -1,7 +1,7 @@
 {
-  "name": "loop-eng",
-  "version": "0.3.0",
-  "description": "Engineering Knowledge Compiler — learns how you work, remembers across sessions, works everywhere",
+  "name": "agentcache",
+  "version": "0.1.0",
+  "description": "Knowledge cache for AI agents — learns how you work, remembers across sessions, works everywhere",
   "type": "module",
   "license": "MIT",
   "author": "a21.ai",
@@ -27,7 +27,7 @@
     "node": ">=20.12.0"
   },
   "bin": {
-    "loop-eng": "./dist/cli.js"
+    "agentcache": "dist/cli.js"
   },
   "files": [
     "dist"

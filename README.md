@@ -1,14 +1,14 @@
-# Loop
+# AgentCache
 
-**Engineering Knowledge Compiler** — learns how you work, remembers across sessions, works everywhere.
+**Knowledge cache for AI coding agents** — learns how you work, remembers across sessions, works everywhere.
 
-Loop observes your coding sessions and compiles reusable knowledge (rules, lessons, architectural decisions, context) into a local database. Every future session — regardless of IDE or LLM — gets the benefit of everything you've learned before.
+AgentCache observes your coding sessions and compiles reusable knowledge (rules, lessons, architectural decisions, context) into a local database. Every future session — regardless of IDE or LLM — gets the benefit of everything you've learned before.
 
 ## Why
 
 Every AI coding session starts from zero. The agent doesn't know your team's conventions, past mistakes, or architectural decisions. You repeat yourself. Bugs recur. Context is lost.
 
-Loop fixes this. It's a personal engineering memory that:
+AgentCache fixes this. It's a persistent knowledge layer that:
 - **Learns** rules, lessons, and decisions from your sessions
 - **Injects** relevant knowledge at the start of every new session
 - **Works everywhere** — any IDE, any LLM, simultaneously
@@ -17,12 +17,12 @@ Loop fixes this. It's a personal engineering memory that:
 ## Install
 
 ```bash
-npm install -g loop-eng
+npm install -g agentcache
 ```
 
 That's it. No `init`, no per-project setup, no config files.
 
-On install, Loop automatically:
+On install, AgentCache automatically:
 1. Creates `~/.loop/loop.db` (your knowledge store)
 2. Detects installed IDEs (Claude Code, Cursor, Roo Code, Windsurf, Continue, Codex)
 3. Registers itself as an MCP server in each
@@ -43,10 +43,10 @@ On install, Loop automatically:
 │                              │                                    │
 │                    MCP Protocol (stdio)                           │
 │                              │                                    │
-│                    ┌─────────┴─────────┐                         │
-│                    │   Loop MCP Server  │                         │
-│                    │   (loop-eng serve) │                         │
-│                    └─────────┬─────────┘                         │
+│                 ┌────────────┴────────────┐                      │
+│                 │  AgentCache MCP Server   │                      │
+│                 │   (agentcache serve)     │                      │
+│                 └────────────┬────────────┘                      │
 │                              │                                    │
 │                    ┌─────────┴─────────┐                         │
 │                    │  ~/.loop/loop.db   │                         │
@@ -55,7 +55,7 @@ On install, Loop automatically:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### The Loop
+### The Cycle
 
 1. **Session starts** — agent calls `loop_inject_context` → gets compiled rules, lessons, decisions
 2. **During session** — agent calls `loop_compile_submit` incrementally as it learns things
@@ -74,7 +74,7 @@ Rules and lessons are **global** — they apply to all your projects. Decisions 
 
 ## MCP Tools
 
-Loop exposes 8 tools via the Model Context Protocol:
+AgentCache exposes 8 tools via the Model Context Protocol:
 
 | Tool | Purpose |
 |------|---------|
@@ -90,23 +90,23 @@ Loop exposes 8 tools via the Model Context Protocol:
 ## CLI Commands
 
 ```bash
-loop-eng setup           # Re-detect IDEs and register (runs automatically on install)
-loop-eng serve           # Start MCP server (IDEs spawn this automatically)
-loop-eng status          # Show knowledge stats for current project
-loop-eng compile-session # Queue transcript for compilation (Stop hook)
-loop-eng discover        # Discover uncompiled transcripts (SessionStart hook)
-loop-eng enforce         # Policy enforcement (PreToolUse hook)
+agentcache setup           # Re-detect IDEs and register (runs automatically on install)
+agentcache serve           # Start MCP server (IDEs spawn this automatically)
+agentcache status          # Show knowledge stats for current project
+agentcache compile-session # Queue transcript for compilation (Stop hook)
+agentcache discover        # Discover uncompiled transcripts (SessionStart hook)
+agentcache enforce         # Policy enforcement (PreToolUse hook)
 ```
 
 ## Design Principles
 
 ### Zero Config
 
-`npm install -g` is the only step. Loop detects your IDEs, registers itself, and starts working. No dotfiles in your project. No init commands. No config to maintain.
+`npm install -g agentcache` is the only step. It detects your IDEs, registers itself, and starts working. No dotfiles in your project. No init commands. No config to maintain.
 
 ### Universal
 
-Loop uses MCP (Model Context Protocol) as its only interface. Any IDE that supports MCP works with Loop. Any LLM — Claude, GPT, Gemini, Qwen, Llama — can use Loop's tools. No IDE-specific code paths. No LLM-specific logic.
+AgentCache uses MCP (Model Context Protocol) as its only interface. Any IDE that supports MCP works. Any LLM — Claude, GPT, Gemini, Qwen, Llama — can use the tools. No IDE-specific code paths. No LLM-specific logic.
 
 ### Developer-Scoped
 
@@ -114,14 +114,14 @@ One database per developer (`~/.loop/loop.db`), not per project. Rules and lesso
 
 ### Resilient to Abrupt Exits
 
-Sessions can end without warning (crash, ctrl-c, network drop). Loop handles this through:
+Sessions can end without warning (crash, ctrl-c, network drop). AgentCache handles this through:
 - **Incremental submission** — observations are saved as they happen, not batched at the end
 - **Transcript recovery** — for Claude Code and Continue, transcripts persist on disk and are compiled next session
 - **Pending queue in SQLite** — concurrent access is safe, nothing lost to race conditions
 
-### Anti-Overengineering
+### Anti-Bloat
 
-Loop prevents knowledge bloat:
+AgentCache prevents knowledge from growing unbounded:
 - **Confidence promotion** — observations need repeated confirmation before becoming high-confidence
 - **Decay** — auto-compiled items not seen in 30 days get archived
 - **Budget caps** — max 20 rules, 10 lessons, 10 decisions, 5 context items injected per session
@@ -157,19 +157,19 @@ No data leaves your machine. No network calls. No telemetry. No accounts.
 Observations (raw)
     │
     ▼
-Extract → Normalize → Canonicalize → Cluster → Detect Contradictions → Compile → Project
-    │                                                                              │
-    │  "Always use ESLint"                                                         │
-    │  "Always use ESLint"  ──→  deduplicated, confidence promoted                 │
-    │  "Use Prettier not ESLint"  ──→  contradiction detected                      │
-    │                                                                              ▼
-                                                                    Knowledge Items (compiled)
-                                                                    - status: active/deprecated/superseded
-                                                                    - confidence: low/medium/high
-                                                                    - authority: AUTO/USER
+Extract → Normalize → Canonicalize → Cluster → Detect Contradictions → Compile
+    │                                                                      │
+    │  "Always use ESLint"                                                 │
+    │  "Always use ESLint"  ──→  deduplicated, confidence promoted         │
+    │  "Use Prettier not ESLint"  ──→  contradiction detected              │
+    │                                                                      ▼
+                                                            Knowledge Items (compiled)
+                                                            - status: active/deprecated/superseded
+                                                            - confidence: low/medium/high
+                                                            - authority: AUTO/USER
 ```
 
-The compiler is the LLM itself (the agent in your session). Loop provides extraction prompts and the agent processes them — no separate API keys or LLM calls needed.
+The compiler is the LLM itself (the agent in your session). AgentCache provides extraction prompts and the agent processes them — no separate API keys or LLM calls needed.
 
 ## Project Identity
 

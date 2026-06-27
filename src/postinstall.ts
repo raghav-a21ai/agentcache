@@ -25,9 +25,9 @@ try {
   registerClaudeHooks();
 
   if (registered.length > 0) {
-    console.error(`Loop: registered with ${registered.join(", ")}`);
+    console.error(`agentcache: registered with ${registered.join(", ")}`);
   }
-  console.error("Loop: ready. Knowledge compiles automatically across all sessions.");
+  console.error("agentcache: ready. Knowledge compiles automatically across all sessions.");
 } catch (err: any) {
-  console.error(`Loop postinstall: ${err.message}. Run 'loop-eng setup' manually.`);
+  console.error(`agentcache postinstall: ${err.message}. Run 'agentcache setup' manually.`);
 }

@@ -41,10 +41,10 @@ function getResolvedProjectId(): string {
 
 export async function startMcpServer(): Promise<void> {
   const server = new Server(
-    { name: "loop", version: "0.3.0" },
+    { name: "agentcache", version: "0.1.0" },
     {
       capabilities: { tools: {} },
-      instructions: "Loop is your engineering knowledge compiler. At the START of every session, call loop_inject_context to load compiled rules, lessons, decisions, and context. Submit observations INCREMENTALLY via loop_compile_submit as you learn them — do not wait until session end.",
+      instructions: "AgentCache is your knowledge cache. At the START of every session, call loop_inject_context to load compiled rules, lessons, decisions, and context. Submit observations INCREMENTALLY via loop_compile_submit as you learn them — do not wait until session end.",
     }
   );
 
@@ -190,7 +190,7 @@ export async function startMcpServer(): Promise<void> {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!isLoopInitialized()) {
-      return { content: [{ type: "text" as const, text: "Loop not initialized. Run: loop-eng setup" }], isError: true };
+      return { content: [{ type: "text" as const, text: "Loop not initialized. Run: agentcache setup" }], isError: true };
     }
 
     const repo = new SqliteKnowledgeRepository(getDbPath());

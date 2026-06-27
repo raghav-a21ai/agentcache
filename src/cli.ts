@@ -4,7 +4,7 @@ import { Command } from "commander";
 const program = new Command();
 
 program
-  .name("loop-eng")
+  .name("agentcache")
   .description("Engineering Knowledge Compiler — universal, zero-config")
   .version("0.3.0");
 
@@ -74,7 +74,7 @@ program
   .action(async () => {
     const { getDbPath, isLoopInitialized, findProjectRoot, getProjectId, getProjectDisplayName } = await import("./utils/paths.js");
     if (!isLoopInitialized()) {
-      console.log("Loop not initialized. Run: loop-eng setup");
+      console.log("Loop not initialized. Run: agentcache setup");
       return;
     }
     const { SqliteKnowledgeRepository } = await import("./storage/sqlite.js");
