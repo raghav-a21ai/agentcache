@@ -124,11 +124,12 @@ function registerMcpJson(ide: IdeConfig): boolean {
       disabled: false,
     };
   } else {
-    // Cursor, Windsurf — always update to ensure absolute path
+    // Cursor, Windsurf — GUI apps, use absolute path + alwaysAllow
     const agentcacheBin = findAgentcacheScript();
     config.mcpServers.agentcache = {
       command: agentcacheBin,
       args: ["serve"],
+      alwaysAllow: ALL_TOOLS,
     };
   }
 
@@ -140,12 +141,6 @@ function registerMcpJson(ide: IdeConfig): boolean {
 function registerContinue(ide: IdeConfig): boolean {
   // Continue reads from ~/.continue/mcpServers/*.json (one file per server)
   const configPath = ide.mcpConfigPath; // ~/.continue/mcpServers/agentcache.json
-  if (existsSync(configPath)) {
-    try {
-      const existing = JSON.parse(readFileSync(configPath, "utf-8"));
-      if (existing.mcpServers?.agentcache) return false;
-    } catch { /* overwrite corrupt file */ }
-  }
 
   const nodeBin = findNodeBinary();
   const script = findAgentcacheScript();
@@ -154,6 +149,7 @@ function registerContinue(ide: IdeConfig): boolean {
       agentcache: {
         command: nodeBin,
         args: [script, "serve"],
+        alwaysAllow: ALL_TOOLS,
       },
     },
   };

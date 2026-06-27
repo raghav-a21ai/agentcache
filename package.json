@@ -1,6 +1,6 @@
 {
   "name": "agentcache",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Knowledge cache for AI agents — learns how you work, remembers across sessions, works everywhere",
   "type": "module",
   "license": "MIT",
