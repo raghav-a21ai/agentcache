@@ -1,42 +1,59 @@
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
-import { dirname } from "path";
-import {
-  findProjectRoot,
-  getInjectedContextPath,
-  getGeneratedDir,
-  getPendingQueuePath,
-  isLoopInitialized,
-} from "../utils/paths.js";
+import { statSync } from "fs";
+import { basename, dirname } from "path";
+import { getDbPath, isLoopInitialized, getProjectId } from "../utils/paths.js";
+import { findAllClaudeTranscripts, findAllContinueTranscripts } from "../utils/transcript.js";
+import { SqliteKnowledgeRepository } from "../storage/sqlite.js";
+import { randomUUID } from "crypto";
+
+function inferProjectRootFromTranscriptPath(path: string): string {
+  // Claude transcripts: ~/.claude/projects/<slug>/<id>.jsonl
+  // The slug is a mangled version of the project path (e.g. "-Users-raghav-project")
+  const dir = dirname(path);
+  const slug = basename(dir);
+  if (slug.startsWith("-")) {
+    return slug.replace(/-/g, "/");
+  }
+  return dir;
+}
 
 export async function handleSessionStart(): Promise<void> {
-  const projectRoot = findProjectRoot();
-  if (!isLoopInitialized(projectRoot)) return;
+  if (!isLoopInitialized()) return;
 
-  const outPath = getInjectedContextPath(projectRoot);
-  mkdirSync(dirname(outPath), { recursive: true });
+  const repo = new SqliteKnowledgeRepository(getDbPath());
+  const compiledPaths = new Set(repo.getAllCompiledTranscriptPaths());
 
-  const hasPending = existsSync(getPendingQueuePath(projectRoot));
-  const generatedDir = getGeneratedDir(projectRoot);
+  const allTranscripts = [
+    ...findAllClaudeTranscripts(),
+    ...findAllContinueTranscripts(),
+  ];
 
-  let content = "";
-
-  if (hasPending) {
-    content += "<!-- Loop: sessions pending compilation. Call loop_compile_extract to process. -->\n\n";
-  }
-
-  // Include existing compiled knowledge
-  content += "## Compiled Knowledge\n\n";
-  for (const file of ["RULES.md", "LESSONS.md", "DECISIONS.md", "CONTEXT.md"]) {
-    const filePath = `${generatedDir}/${file}`;
-    if (existsSync(filePath)) {
-      const fileContent = readFileSync(filePath, "utf-8");
-      const lines = fileContent.split("\n");
-      const bodyStart = lines.findIndex((l) => l.startsWith("# "));
-      if (bodyStart >= 0) {
-        content += lines.slice(bodyStart).join("\n") + "\n\n";
-      }
+  const oneMinuteAgo = Date.now() - 60000;
+  const uncompiled = allTranscripts.filter((path) => {
+    if (compiledPaths.has(path)) return false;
+    try {
+      return statSync(path).mtimeMs < oneMinuteAgo;
+    } catch {
+      return false;
     }
+  });
+
+  if (uncompiled.length === 0) {
+    repo.close();
+    return;
   }
 
-  writeFileSync(outPath, content.trim() + "\n", "utf-8");
+  for (const path of uncompiled) {
+    const projectRoot = inferProjectRootFromTranscriptPath(path);
+    const project = getProjectId(projectRoot);
+    repo.queueTranscript({
+      id: `pend_${randomUUID().slice(0, 8)}`,
+      transcriptPath: path,
+      project,
+      projectRoot,
+      provider: "discovered",
+      queuedAt: Date.now(),
+    });
+  }
+
+  repo.close();
 }

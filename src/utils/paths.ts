@@ -1,6 +1,20 @@
 import { existsSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
+import { createHash } from "crypto";
 import { getGitRoot } from "./git.js";
+
+export function getGlobalLoopDir(): string {
+  return join(homedir(), ".loop");
+}
+
+export function getDbPath(): string {
+  return join(getGlobalLoopDir(), "loop.db");
+}
+
+export function isLoopInitialized(): boolean {
+  return existsSync(getDbPath());
+}
 
 export function findProjectRoot(cwd?: string): string {
   const dir = cwd || process.cwd();
@@ -8,30 +22,20 @@ export function findProjectRoot(cwd?: string): string {
   return gitRoot || dir;
 }
 
-export function getLoopDir(projectRoot: string): string {
-  return join(projectRoot, ".loop");
+export function getProjectId(projectRoot: string): string {
+  const name = projectRoot.split("/").pop() || "unknown";
+  const hash = createHash("sha256").update(projectRoot).digest("hex").slice(0, 6);
+  return `${name}-${hash}`;
 }
 
-export function getDbPath(projectRoot: string): string {
-  return join(getLoopDir(projectRoot), "loop.db");
+export function getProjectDisplayName(projectRoot: string): string {
+  return projectRoot.split("/").pop() || "unknown";
 }
 
-export function getInjectedContextPath(projectRoot: string): string {
-  return join(getLoopDir(projectRoot), "injected-context.md");
+export function getClaudeTranscriptsDir(): string {
+  return join(homedir(), ".claude", "projects");
 }
 
-export function getGeneratedDir(projectRoot: string): string {
-  return join(getLoopDir(projectRoot), "generated");
-}
-
-export function getConfigPath(projectRoot: string): string {
-  return join(getLoopDir(projectRoot), "config.json");
-}
-
-export function getPendingQueuePath(projectRoot: string): string {
-  return join(getLoopDir(projectRoot), "pending.jsonl");
-}
-
-export function isLoopInitialized(projectRoot: string): boolean {
-  return existsSync(getDbPath(projectRoot));
+export function getContinueSessionsDir(): string {
+  return join(homedir(), ".continue", "sessions");
 }

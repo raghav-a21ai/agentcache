@@ -1,23 +1,31 @@
-import { appendFileSync, mkdirSync } from "fs";
-import { dirname } from "path";
-import { findProjectRoot, getPendingQueuePath, isLoopInitialized } from "../utils/paths.js";
+import { getDbPath, isLoopInitialized, findProjectRoot, getProjectId } from "../utils/paths.js";
 import { findLatestTranscript } from "../utils/transcript.js";
+import { SqliteKnowledgeRepository } from "../storage/sqlite.js";
+import { randomUUID } from "crypto";
 
-export async function handleStop(): Promise<void> {
-  const projectRoot = findProjectRoot();
-  if (!isLoopInitialized(projectRoot)) return;
+export async function handleStop(payload?: { transcript_path?: string }): Promise<void> {
+  if (!isLoopInitialized()) return;
 
-  const transcriptPath = findLatestTranscript();
+  const transcriptPath = payload?.transcript_path || findLatestTranscript();
   if (!transcriptPath) return;
 
-  const queuePath = getPendingQueuePath(projectRoot);
-  mkdirSync(dirname(queuePath), { recursive: true });
+  const repo = new SqliteKnowledgeRepository(getDbPath());
+  const projectRoot = findProjectRoot();
+  const project = getProjectId(projectRoot);
 
-  const entry = JSON.stringify({
+  const compiledPaths = new Set(repo.getAllCompiledTranscriptPaths());
+  if (compiledPaths.has(transcriptPath)) {
+    repo.close();
+    return;
+  }
+
+  repo.queueTranscript({
+    id: `pend_${randomUUID().slice(0, 8)}`,
     transcriptPath,
+    project,
+    projectRoot,
+    provider: "claude",
     queuedAt: Date.now(),
-    project: projectRoot.split("/").pop() || "unknown",
   });
-
-  appendFileSync(queuePath, entry + "\n", "utf-8");
+  repo.close();
 }

@@ -7,9 +7,7 @@ import { canonicalize, computeCanonicalKey } from "./passes/3-canonicalizer.js";
 import { buildClusteringPrompt, parseClusteringResponse, CLUSTER_PROMPT_VERSION, type KnowledgeCluster } from "./passes/4-clusterer.js";
 import { CONTRADICTION_PROMPT_VERSION } from "./passes/5-contradiction.js";
 import { compileKnowledge } from "./passes/6-compile.js";
-import { projectToMarkdown } from "./passes/7-projector.js";
 import { getGitContext } from "../utils/git.js";
-import { getGeneratedDir } from "../utils/paths.js";
 
 export const COMPILER_VERSION = "0.1.0";
 
@@ -34,13 +32,13 @@ export interface ClusteringResult {
   diagnostics: string;
 }
 
-// Step 1: Build extraction prompt from transcript
 export function startCompile(
   events: TranscriptEvent[],
   sessionId: string,
   project: string,
   projectRoot: string,
-  repo: KnowledgeRepository
+  repo: KnowledgeRepository,
+  transcriptPath?: string
 ): ExtractionState {
   const git = getGitContext(projectRoot);
   const session: Session = {
@@ -52,7 +50,7 @@ export function startCompile(
     gitCommit: git.commit,
     provider: "agent",
     model: "host-agent",
-    transcriptPath: "",
+    transcriptPath: transcriptPath || "",
     observationCount: 0,
   };
   repo.saveSession(session);
@@ -61,7 +59,6 @@ export function startCompile(
   return { sessionId, project, projectRoot, prompt };
 }
 
-// Step 2: Process extraction response, run passes 2-3, determine if clustering needed
 export function processExtraction(
   repo: KnowledgeRepository,
   responseText: string,
@@ -72,12 +69,10 @@ export function processExtraction(
   const rawObservations = parseExtractionResponse(responseText, sessionId, project);
   const normalized = normalize(rawObservations);
 
-  // Pass 3: Canonicalize
   const existingItems = repo.getKnowledgeItems(project, { status: "active" });
   const existingKeys = existingItems.map((i) => computeCanonicalKey(i.content));
   const canonicalized = canonicalize(normalized, existingKeys);
 
-  // Handle auto-reinforced
   for (const obs of canonicalized.autoReinforced) {
     const matchingItem = existingItems.find(
       (item) => computeCanonicalKey(item.content) === obs.canonicalKey
@@ -94,11 +89,9 @@ export function processExtraction(
     }
   }
 
-  // Save observations
   repo.saveObservations(normalized);
 
   if (canonicalized.needsClustering.length === 0) {
-    projectToMarkdown(repo.getKnowledgeItems(project), getGeneratedDir(projectRoot), COMPILER_VERSION);
     saveCompileRun(repo, sessionId, project, normalized.length, canonicalized.autoReinforced.length, 0, 0, 0, 0, 0, Date.now());
     return {
       status: "complete",
@@ -106,7 +99,6 @@ export function processExtraction(
     };
   }
 
-  // Need clustering
   const clusteringPrompt = buildClusteringPrompt(canonicalized.needsClustering, existingItems);
 
   return {
@@ -116,7 +108,6 @@ export function processExtraction(
   };
 }
 
-// Step 3: Process clustering response, run passes 5-6-7
 export function processClustering(
   repo: KnowledgeRepository,
   responseText: string,
@@ -129,14 +120,12 @@ export function processClustering(
   const existingItems = repo.getKnowledgeItems(project, { status: "active" });
   const observations = repo.getObservations(project);
 
-  // Reconstruct canonicalized observations from stored ones for this session
   const sessionObs = observations.filter((o) => o.sessionId === sessionId);
   const canonicalized = canonicalize(sessionObs);
   const needsClustering = canonicalized.needsClustering;
 
   const clusters = parseClusteringResponse(responseText, needsClustering);
 
-  // Pass 5: Handle contradictions locally for supersedes
   const contradictions: any[] = [];
   const supersedeActions = clusters.filter((c) => c.action === "SUPERSEDE");
   for (const s of supersedeActions) {
@@ -161,7 +150,6 @@ export function processClustering(
     repo.saveContradiction(c);
   }
 
-  // Pass 6: Compile
   const now = Date.now();
   const compiled = compileKnowledge(clusters, existingItems, needsClustering, project, now);
 
@@ -185,10 +173,6 @@ export function processClustering(
     repo.updateKnowledgeItem(item.id, { status: item.status, updatedAt: item.updatedAt });
   }
 
-  // Pass 7: Project
-  projectToMarkdown(repo.getKnowledgeItems(project), getGeneratedDir(projectRoot), COMPILER_VERSION);
-
-  // Save compile run
   const totalObs = sessionObs.length;
   saveCompileRun(repo, sessionId, project, totalObs, 0, compiled.created.length, compiled.reinforced.length, compiled.superseded.length, compiled.deprecated.length, compiled.ignored, startedAt);
 

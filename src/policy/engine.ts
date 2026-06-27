@@ -1,4 +1,9 @@
-import type { KnowledgeRepository, KnowledgeItem } from "../storage/repository.js";
+import type { KnowledgeItem } from "../storage/repository.js";
+
+export interface PolicyInput {
+  tool_name: string;
+  tool_input: Record<string, unknown>;
+}
 
 export interface PolicyResult {
   decision?: "block";
@@ -12,12 +17,10 @@ const HARDCODED_BLOCKS: Array<{ pattern: RegExp; reason: string }> = [
 ];
 
 export function evaluatePolicy(
-  repo: KnowledgeRepository,
-  project: string,
-  toolName: string,
-  toolInput: Record<string, unknown>
+  input: PolicyInput,
+  enforcedRules: KnowledgeItem[]
 ): PolicyResult {
-  const command = extractCommand(toolName, toolInput);
+  const command = extractCommand(input.tool_name, input.tool_input);
   if (!command) return {};
 
   for (const block of HARDCODED_BLOCKS) {
@@ -26,9 +29,8 @@ export function evaluatePolicy(
     }
   }
 
-  const enforced = repo.getKnowledgeItems(project, { enforce: true, status: "active" });
-  for (const item of enforced) {
-    if (matchesRule(item, toolName, command)) {
+  for (const item of enforcedRules) {
+    if (matchesRule(item, input.tool_name, command)) {
       return { decision: "block", reason: `Blocked by enforced rule: ${item.content}` };
     }
   }

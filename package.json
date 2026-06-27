@@ -1,16 +1,20 @@
 {
-  "name": "loop",
-  "version": "0.1.0",
-  "description": "Engineering Knowledge Compiler",
+  "name": "loop-eng",
+  "version": "0.3.0",
+  "description": "Engineering Knowledge Compiler — universal, zero-config",
   "type": "module",
   "engines": {
     "node": ">=20.12.0"
   },
   "bin": {
-    "loop": "./dist/cli.js"
+    "loop-eng": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
+    "postinstall": "node dist/postinstall.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "tsx src/cli.ts"

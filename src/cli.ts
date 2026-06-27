@@ -1,44 +1,60 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { handleStop } from "./hooks/stop.js";
-import { handleSessionStart } from "./hooks/session-start.js";
-import { handlePreToolUse } from "./hooks/pre-tool-use.js";
-import { initProject } from "./init.js";
 
 const program = new Command();
 
 program
-  .name("loop")
-  .description("Engineering Knowledge Compiler")
-  .version("0.1.0");
+  .name("loop-eng")
+  .description("Engineering Knowledge Compiler — universal, zero-config")
+  .version("0.3.0");
 
 program
-  .command("init")
-  .description("Initialize Loop in the current project")
-  .option("--cursor", "Also configure Cursor MCP")
-  .action(async (opts) => {
-    await initProject(opts);
+  .command("setup")
+  .description("Detect IDEs and register Loop (runs automatically on install)")
+  .action(async () => {
+    const { runSetup } = await import("./setup.js");
+    await runSetup();
   });
 
 program
-  .command("compile")
-  .description("Queue current session for compilation (happens at next session start)")
+  .command("serve")
+  .description("Start Loop MCP server (spawned by IDEs automatically)")
   .action(async () => {
-    await handleStop();
-    console.log("Session queued for compilation. It will be compiled when the next agent session starts via MCP tools.");
+    const { startMcpServer } = await import("./mcp.js");
+    await startMcpServer();
   });
 
 program
-  .command("inject")
-  .description("Render context for the upcoming session")
+  .command("compile-session")
+  .description("Stop hook: queue transcript for compilation")
   .action(async () => {
+    const { handleStop } = await import("./hooks/stop.js");
+    let payload: { transcript_path?: string } | undefined;
+    try {
+      let data = "";
+      for await (const chunk of process.stdin) {
+        data += chunk;
+      }
+      if (data.trim()) {
+        payload = JSON.parse(data);
+      }
+    } catch {}
+    await handleStop(payload);
+  });
+
+program
+  .command("discover")
+  .description("SessionStart hook: discover uncompiled transcripts")
+  .action(async () => {
+    const { handleSessionStart } = await import("./hooks/session-start.js");
     await handleSessionStart();
   });
 
 program
   .command("enforce")
-  .description("Evaluate a PreToolUse event from stdin")
+  .description("PreToolUse hook: policy enforcement")
   .action(async () => {
+    const { handlePreToolUse } = await import("./hooks/pre-tool-use.js");
     let data = "";
     for await (const chunk of process.stdin) {
       data += chunk;
@@ -53,36 +69,33 @@ program
   });
 
 program
-  .command("review")
-  .argument("[what]", "What to review: contradictions")
-  .description("Review contradictions or pending items")
-  .action(async (what) => {
-    if (what === "contradictions") {
-      const { findProjectRoot, getDbPath } = await import("./utils/paths.js");
-      const { SqliteKnowledgeRepository } = await import("./storage/sqlite.js");
-      const root = findProjectRoot();
-      const repo = new SqliteKnowledgeRepository(getDbPath(root));
-      const project = root.split("/").pop() || "unknown";
-      const contradictions = repo.getUnresolvedContradictions(project);
-      if (contradictions.length === 0) {
-        console.log("No unresolved contradictions.");
-      } else {
-        for (const c of contradictions) {
-          console.log(`\n[${c.id}] Topic: ${c.topic}`);
-          console.log(`  ${c.description}`);
-          console.log(`  Recommendation: ${c.recommendation}`);
-        }
-      }
-      repo.close();
-    }
-  });
-
-program
-  .command("serve")
-  .description("Start Loop MCP server (for Cursor, Windsurf, Copilot)")
+  .command("status")
+  .description("Show Loop knowledge stats")
   .action(async () => {
-    const { startMcpServer } = await import("./mcp.js");
-    await startMcpServer();
+    const { getDbPath, isLoopInitialized, findProjectRoot, getProjectId, getProjectDisplayName } = await import("./utils/paths.js");
+    if (!isLoopInitialized()) {
+      console.log("Loop not initialized. Run: loop-eng setup");
+      return;
+    }
+    const { SqliteKnowledgeRepository } = await import("./storage/sqlite.js");
+    const repo = new SqliteKnowledgeRepository(getDbPath());
+    const projectRoot = findProjectRoot();
+    const project = getProjectId(projectRoot);
+    const displayName = getProjectDisplayName(projectRoot);
+    const items = repo.getKnowledgeForContext(project);
+    const rules = items.filter((i) => i.type === "rule");
+    const lessons = items.filter((i) => i.type === "lesson");
+    const decisions = items.filter((i) => i.type === "decision");
+    const context = items.filter((i) => i.type === "context");
+    const globalItems = items.filter((i) => i.scope === "global");
+    const projectItems = items.filter((i) => i.scope === "project");
+    const pending = repo.getPendingCount();
+    repo.close();
+
+    console.log(`Loop — ${displayName} (${project})`);
+    console.log(`  ${items.length} items (${globalItems.length} global, ${projectItems.length} project)`);
+    console.log(`  ${rules.length} rules | ${lessons.length} lessons | ${decisions.length} decisions | ${context.length} context`);
+    if (pending > 0) console.log(`  ${pending} sessions pending compilation`);
   });
 
 program.parse();

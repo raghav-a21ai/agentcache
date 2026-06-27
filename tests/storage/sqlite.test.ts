@@ -45,6 +45,7 @@ describe("SqliteKnowledgeRepository", () => {
       sourceQuote: "We should always use strict mode",
       confidence: "high",
       project: "test-project",
+      scope: "global",
       ...overrides,
     };
   }
@@ -62,6 +63,7 @@ describe("SqliteKnowledgeRepository", () => {
       status: "active",
       enforce: false,
       project: "test-project",
+      scope: "global",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       lastSeenAt: Date.now(),
@@ -283,6 +285,37 @@ describe("SqliteKnowledgeRepository", () => {
       expect(repo.getKnowledgeItem(lowItem.id)!.confidence).toBe("low");
       expect(repo.getKnowledgeItem(medItem.id)!.confidence).toBe("medium");
       expect(repo.getKnowledgeItem(highItem.id)!.confidence).toBe("high");
+    });
+
+    it("getKnowledgeForContext returns global + project-specific items", () => {
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "global", project: "other-project" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "project", project: "test-project" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "project", project: "other-project" }));
+
+      const items = repo.getKnowledgeForContext("test-project");
+      expect(items).toHaveLength(2);
+      const scopes = items.map((i) => i.scope).sort();
+      expect(scopes).toEqual(["global", "project"]);
+    });
+
+    it("getKnowledgeForContext excludes non-active items", () => {
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "global", status: "active" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "global", status: "deprecated" }));
+
+      const items = repo.getKnowledgeForContext("test-project");
+      expect(items).toHaveLength(1);
+      expect(items[0].status).toBe("active");
+    });
+
+    it("getEnforcedRules returns global enforced + project enforced", () => {
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "global", enforce: true, project: "other-project" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "project", enforce: true, project: "test-project" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "project", enforce: true, project: "other-project" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ scope: "project", enforce: false, project: "test-project" }));
+
+      const items = repo.getEnforcedRules("test-project");
+      expect(items).toHaveLength(2);
+      expect(items.every((i) => i.enforce === true)).toBe(true);
     });
   });
 

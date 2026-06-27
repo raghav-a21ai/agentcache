@@ -1,4 +1,4 @@
-import { findProjectRoot, getDbPath, isLoopInitialized } from "../utils/paths.js";
+import { findProjectRoot, getDbPath, isLoopInitialized, getProjectId } from "../utils/paths.js";
 import { SqliteKnowledgeRepository } from "../storage/sqlite.js";
 import { evaluatePolicy } from "../policy/engine.js";
 
@@ -13,15 +13,15 @@ export interface PreToolUseOutput {
 }
 
 export function handlePreToolUse(input: PreToolUseInput): PreToolUseOutput {
-  const projectRoot = findProjectRoot();
-  if (!isLoopInitialized(projectRoot)) return {};
+  if (!isLoopInitialized()) return {};
 
-  const dbPath = getDbPath(projectRoot);
-  const repo = new SqliteKnowledgeRepository(dbPath);
+  const projectRoot = findProjectRoot();
+  const repo = new SqliteKnowledgeRepository(getDbPath());
 
   try {
-    const project = projectRoot.split("/").pop() || "unknown";
-    return evaluatePolicy(repo, project, input.tool_name, input.tool_input);
+    const project = getProjectId(projectRoot);
+    const enforcedRules = repo.getEnforcedRules(project);
+    return evaluatePolicy(input, enforcedRules);
   } finally {
     repo.close();
   }

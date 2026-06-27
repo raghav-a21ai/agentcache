@@ -84,6 +84,7 @@ describe("Compiler Steps", () => {
       status: "active",
       enforce: false,
       project: "test-project",
+      scope: "global",
       createdAt: 1000,
       updatedAt: 1000,
       lastSeenAt: 1000,
@@ -117,6 +118,7 @@ describe("Compiler Steps", () => {
       sourceQuote: "quote",
       confidence: "high",
       project: "test-project",
+      scope: "global",
     });
 
     const clusterResponse = JSON.stringify({

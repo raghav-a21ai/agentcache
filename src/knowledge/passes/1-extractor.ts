@@ -56,5 +56,6 @@ export function parseExtractionResponse(
       sourceQuote: o.sourceQuote || "",
       confidence: o.confidence as Observation["confidence"],
       project,
+      scope: (o.scope || ((o.type === "rule" || o.type === "lesson") ? "global" : "project")) as Observation["scope"],
     }));
 }

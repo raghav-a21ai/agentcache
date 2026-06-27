@@ -20,6 +20,7 @@ export interface Observation {
   sourceQuote: string;
   confidence: "high" | "medium";
   project: string;
+  scope: "global" | "project";
 }
 
 export interface KnowledgeItem {
@@ -35,6 +36,7 @@ export interface KnowledgeItem {
   supersededById?: string;
   enforce: boolean;
   project: string;
+  scope: "global" | "project";
   createdAt: number;
   updatedAt: number;
   lastSeenAt: number;
@@ -86,9 +88,20 @@ export interface KnowledgeFilter {
   authority?: KnowledgeItem["authority"];
 }
 
+export interface PendingTranscript {
+  id: string;
+  transcriptPath: string;
+  project: string;
+  projectRoot: string;
+  provider: string;
+  queuedAt: number;
+}
+
 export interface KnowledgeRepository {
   saveSession(session: Session): void;
   getSession(id: string): Session | null;
+  getCompiledTranscriptPaths(project: string): string[];
+  getAllCompiledTranscriptPaths(): string[];
 
   saveObservation(obs: Observation): void;
   saveObservations(obs: Observation[]): void;
@@ -98,6 +111,8 @@ export interface KnowledgeRepository {
   updateKnowledgeItem(id: string, patch: Partial<KnowledgeItem>): void;
   getKnowledgeItems(project: string, filter?: KnowledgeFilter): KnowledgeItem[];
   getKnowledgeItem(id: string): KnowledgeItem | null;
+  getKnowledgeForContext(project: string): KnowledgeItem[];
+  getEnforcedRules(project: string): KnowledgeItem[];
 
   saveCompileRun(run: CompileRun): void;
   getCompileRuns(project: string, limit?: number): CompileRun[];
@@ -105,6 +120,10 @@ export interface KnowledgeRepository {
   saveContradiction(report: ContradictionReport): void;
   getUnresolvedContradictions(project: string): ContradictionReport[];
   resolveContradiction(id: string): void;
+
+  queueTranscript(entry: PendingTranscript): void;
+  popPendingTranscript(): PendingTranscript | null;
+  getPendingCount(): number;
 
   close(): void;
 }

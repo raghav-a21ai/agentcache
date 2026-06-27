@@ -14,23 +14,23 @@ describe("Policy Engine", () => {
   });
 
   it("blocks force-push to main", () => {
-    const result = evaluatePolicy(repo, "p", "Bash", { command: "git push --force origin main" });
+    const result = evaluatePolicy({ tool_name: "Bash", tool_input: { command: "git push --force origin main" } }, []);
     expect(result.decision).toBe("block");
     expect(result.reason).toContain("Force-push");
   });
 
   it("blocks rm -rf /", () => {
-    const result = evaluatePolicy(repo, "p", "Bash", { command: "rm -rf /" });
+    const result = evaluatePolicy({ tool_name: "Bash", tool_input: { command: "rm -rf /" } }, []);
     expect(result.decision).toBe("block");
   });
 
   it("blocks writes to .env files", () => {
-    const result = evaluatePolicy(repo, "p", "Write", { file_path: "/project/.env" });
+    const result = evaluatePolicy({ tool_name: "Write", tool_input: { file_path: "/project/.env" } }, []);
     expect(result.decision).toBe("block");
   });
 
   it("allows normal commands", () => {
-    const result = evaluatePolicy(repo, "p", "Bash", { command: "npm test" });
+    const result = evaluatePolicy({ tool_name: "Bash", tool_input: { command: "npm test" } }, []);
     expect(result.decision).toBeUndefined();
   });
 
@@ -47,13 +47,15 @@ describe("Policy Engine", () => {
       status: "active",
       enforce: true,
       project: "p",
+      scope: "global",
       createdAt: 1000,
       updatedAt: 1000,
       lastSeenAt: 1000,
       metadata: {},
     });
 
-    const result = evaluatePolicy(repo, "p", "Bash", { command: "npx prisma migrate deploy" });
+    const enforced = repo.getEnforcedRules("p");
+    const result = evaluatePolicy({ tool_name: "Bash", tool_input: { command: "npx prisma migrate deploy" } }, enforced);
     expect(result.decision).toBe("block");
     expect(result.reason).toContain("enforced rule");
   });
@@ -71,13 +73,15 @@ describe("Policy Engine", () => {
       status: "active",
       enforce: true,
       project: "p",
+      scope: "global",
       createdAt: 1000,
       updatedAt: 1000,
       lastSeenAt: 1000,
       metadata: {},
     });
 
-    const result = evaluatePolicy(repo, "p", "Bash", { command: "npm install express" });
+    const enforced = repo.getEnforcedRules("p");
+    const result = evaluatePolicy({ tool_name: "Bash", tool_input: { command: "npm install express" } }, enforced);
     expect(result.decision).toBeUndefined();
   });
 });

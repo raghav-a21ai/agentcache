@@ -1,6 +1,7 @@
-import { readFileSync, readdirSync, statSync } from "fs";
+import { readdirSync, statSync, existsSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { getClaudeTranscriptsDir, getContinueSessionsDir } from "./paths.js";
+import { parseTranscriptAuto } from "./transcript-parsers/index.js";
 
 export interface TranscriptEvent {
   type: string;
@@ -10,86 +11,80 @@ export interface TranscriptEvent {
   tool_input?: Record<string, unknown>;
 }
 
-export function getTranscriptsDir(): string {
-  return join(homedir(), ".claude", "projects");
+export function parseTranscript(path: string): TranscriptEvent[] {
+  return parseTranscriptAuto(path);
 }
 
-export function findLatestTranscript(projectHash?: string): string | null {
-  const baseDir = getTranscriptsDir();
-
-  let searchDirs: string[];
-  if (projectHash) {
-    const dir = join(baseDir, projectHash);
-    searchDirs = [dir];
-  } else {
-    try {
-      searchDirs = readdirSync(baseDir)
-        .map((d) => join(baseDir, d))
-        .filter((d) => statSync(d).isDirectory());
-    } catch {
-      return null;
-    }
-  }
+export function findLatestTranscript(): string | null {
+  const baseDir = getClaudeTranscriptsDir();
+  if (!existsSync(baseDir)) return null;
 
   let latest: { path: string; mtime: number } | null = null;
 
-  for (const dir of searchDirs) {
-    try {
-      const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
-      for (const file of files) {
-        const fullPath = join(dir, file);
-        const mtime = statSync(fullPath).mtimeMs;
-        if (!latest || mtime > latest.mtime) {
-          latest = { path: fullPath, mtime };
+  try {
+    const dirs = readdirSync(baseDir)
+      .map((d) => join(baseDir, d))
+      .filter((d) => statSync(d).isDirectory());
+
+    for (const dir of dirs) {
+      try {
+        const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+        for (const file of files) {
+          const fullPath = join(dir, file);
+          const mtime = statSync(fullPath).mtimeMs;
+          if (!latest || mtime > latest.mtime) {
+            latest = { path: fullPath, mtime };
+          }
         }
+      } catch {
+        continue;
       }
-    } catch {
-      continue;
     }
+  } catch {
+    return null;
   }
 
   return latest?.path ?? null;
 }
 
-export function parseTranscript(path: string): TranscriptEvent[] {
-  const content = readFileSync(path, "utf-8");
-  const events: TranscriptEvent[] = [];
+export function findAllClaudeTranscripts(): string[] {
+  const baseDir = getClaudeTranscriptsDir();
+  if (!existsSync(baseDir)) return [];
 
-  for (const line of content.split("\n")) {
-    if (!line.trim()) continue;
-    try {
-      const obj = JSON.parse(line);
+  const transcripts: string[] = [];
+  try {
+    const dirs = readdirSync(baseDir)
+      .map((d) => join(baseDir, d))
+      .filter((d) => statSync(d).isDirectory());
 
-      if (obj.type === "user" && obj.message?.content) {
-        events.push({
-          type: "message",
-          role: "user",
-          content:
-            typeof obj.message.content === "string"
-              ? obj.message.content
-              : JSON.stringify(obj.message.content),
-        });
-      } else if (obj.type === "assistant" && obj.message?.content) {
-        const blocks = Array.isArray(obj.message.content)
-          ? obj.message.content
-          : [{ type: "text", text: obj.message.content }];
-
-        for (const block of blocks) {
-          if (block.type === "text" && block.text) {
-            events.push({ type: "message", role: "assistant", content: block.text });
-          } else if (block.type === "tool_use") {
-            events.push({
-              type: "tool_use",
-              tool_name: block.name,
-              tool_input: block.input,
-            });
+    for (const dir of dirs) {
+      try {
+        const files = readdirSync(dir).filter((f) => f.endsWith(".jsonl"));
+        for (const file of files) {
+          const fullPath = join(dir, file);
+          if (statSync(fullPath).size > 100) {
+            transcripts.push(fullPath);
           }
         }
+      } catch {
+        continue;
       }
-    } catch {
-      continue;
     }
-  }
+  } catch {}
 
-  return events;
+  return transcripts;
+}
+
+export function findAllContinueTranscripts(): string[] {
+  const dir = getContinueSessionsDir();
+  if (!existsSync(dir)) return [];
+
+  try {
+    return readdirSync(dir)
+      .filter((f) => f.endsWith(".json") && f !== "sessions.json")
+      .map((f) => join(dir, f))
+      .filter((f) => statSync(f).size > 100);
+  } catch {
+    return [];
+  }
 }

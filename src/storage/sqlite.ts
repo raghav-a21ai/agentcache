@@ -7,6 +7,7 @@ import type {
   ContradictionReport,
   KnowledgeFilter,
   KnowledgeRepository,
+  PendingTranscript,
 } from "./repository.js";
 
 export class SqliteKnowledgeRepository implements KnowledgeRepository {
@@ -42,7 +43,8 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
         content TEXT NOT NULL,
         source_quote TEXT NOT NULL,
         confidence TEXT NOT NULL,
-        project TEXT NOT NULL
+        project TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'project'
       );
 
       CREATE TABLE IF NOT EXISTS knowledge_items (
@@ -58,6 +60,7 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
         superseded_by_id TEXT,
         enforce INTEGER NOT NULL DEFAULT 0,
         project TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT 'project',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         last_seen_at INTEGER NOT NULL,
@@ -95,11 +98,22 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
         created_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS pending_transcripts (
+        id TEXT PRIMARY KEY,
+        transcript_path TEXT NOT NULL UNIQUE,
+        project TEXT NOT NULL,
+        project_root TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        queued_at INTEGER NOT NULL
+      );
+
       CREATE INDEX IF NOT EXISTS idx_observations_project ON observations(project);
       CREATE INDEX IF NOT EXISTS idx_observations_session ON observations(session_id);
       CREATE INDEX IF NOT EXISTS idx_knowledge_project ON knowledge_items(project);
       CREATE INDEX IF NOT EXISTS idx_knowledge_enforce ON knowledge_items(enforce);
       CREATE INDEX IF NOT EXISTS idx_knowledge_status ON knowledge_items(status);
+      CREATE INDEX IF NOT EXISTS idx_ki_scope_status ON knowledge_items(scope, status);
+      CREATE INDEX IF NOT EXISTS idx_ki_project_status ON knowledge_items(project, status);
       CREATE INDEX IF NOT EXISTS idx_compile_runs_project ON compile_runs(project);
       CREATE INDEX IF NOT EXISTS idx_contradictions_project ON contradictions(project, resolved);
     `);
@@ -133,11 +147,25 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
     return this.mapSession(row);
   }
 
+  getCompiledTranscriptPaths(project: string): string[] {
+    const rows = this.db
+      .prepare("SELECT transcript_path FROM sessions WHERE project = ? AND transcript_path != ''")
+      .all(project) as Array<{ transcript_path: string }>;
+    return rows.map((r) => r.transcript_path);
+  }
+
+  getAllCompiledTranscriptPaths(): string[] {
+    const rows = this.db
+      .prepare("SELECT transcript_path FROM sessions WHERE transcript_path != ''")
+      .all() as Array<{ transcript_path: string }>;
+    return rows.map((r) => r.transcript_path);
+  }
+
   saveObservation(obs: Observation): void {
     this.db
       .prepare(
-        `INSERT INTO observations (id, session_id, timestamp, type, content, source_quote, confidence, project)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO observations (id, session_id, timestamp, type, content, source_quote, confidence, project, scope)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         obs.id,
@@ -147,14 +175,15 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
         obs.content,
         obs.sourceQuote,
         obs.confidence,
-        obs.project
+        obs.project,
+        obs.scope
       );
   }
 
   saveObservations(obs: Observation[]): void {
     const insert = this.db.prepare(
-      `INSERT INTO observations (id, session_id, timestamp, type, content, source_quote, confidence, project)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO observations (id, session_id, timestamp, type, content, source_quote, confidence, project, scope)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
     const transaction = this.db.transaction((observations: Observation[]) => {
       for (const o of observations) {
@@ -166,7 +195,8 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
           o.content,
           o.sourceQuote,
           o.confidence,
-          o.project
+          o.project,
+          o.scope
         );
       }
     });
@@ -187,8 +217,8 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
   saveKnowledgeItem(item: KnowledgeItem): void {
     this.db
       .prepare(
-        `INSERT INTO knowledge_items (id, canonical_hash, type, title, content, confidence, observation_count, authority, status, superseded_by_id, enforce, project, created_at, updated_at, last_seen_at, metadata)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO knowledge_items (id, canonical_hash, type, title, content, confidence, observation_count, authority, status, superseded_by_id, enforce, project, scope, created_at, updated_at, last_seen_at, metadata)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         item.id,
@@ -203,6 +233,7 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
         item.supersededById ?? null,
         item.enforce ? 1 : 0,
         item.project,
+        item.scope,
         item.createdAt,
         item.updatedAt,
         item.lastSeenAt,
@@ -223,6 +254,7 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
       supersededById: "superseded_by_id",
       enforce: "enforce",
       project: "project",
+      scope: "scope",
       createdAt: "created_at",
       updatedAt: "updated_at",
       lastSeenAt: "last_seen_at",
@@ -286,6 +318,36 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
       .get(id) as Record<string, unknown> | undefined;
     if (!row) return null;
     return this.mapKnowledgeItem(row);
+  }
+
+  getKnowledgeForContext(project: string): KnowledgeItem[] {
+    // Run decay: archive AUTO items not seen in 30+ sessions (approx 30 days)
+    const decayThreshold = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    this.db.prepare(
+      `UPDATE knowledge_items SET status = 'archived', updated_at = ?
+       WHERE status = 'active' AND authority = 'AUTO' AND last_seen_at < ?`
+    ).run(Date.now(), decayThreshold);
+
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM knowledge_items WHERE status = 'active' AND (scope = 'global' OR project = ?)
+         ORDER BY
+           CASE authority WHEN 'USER' THEN 0 ELSE 1 END,
+           CASE confidence WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
+           last_seen_at DESC
+         LIMIT 50`
+      )
+      .all(project) as Record<string, unknown>[];
+    return rows.map((row) => this.mapKnowledgeItem(row));
+  }
+
+  getEnforcedRules(project: string): KnowledgeItem[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM knowledge_items WHERE enforce = 1 AND status = 'active' AND (scope = 'global' OR project = ?)`
+      )
+      .all(project) as Record<string, unknown>[];
+    return rows.map((row) => this.mapKnowledgeItem(row));
   }
 
   saveCompileRun(run: CompileRun): void {
@@ -355,6 +417,38 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
     this.db.prepare("UPDATE contradictions SET resolved = 1 WHERE id = ?").run(id);
   }
 
+  queueTranscript(entry: PendingTranscript): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO pending_transcripts (id, transcript_path, project, project_root, provider, queued_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(entry.id, entry.transcriptPath, entry.project, entry.projectRoot, entry.provider, entry.queuedAt);
+  }
+
+  popPendingTranscript(): PendingTranscript | null {
+    const row = this.db
+      .prepare("SELECT * FROM pending_transcripts ORDER BY queued_at ASC LIMIT 1")
+      .get() as Record<string, unknown> | undefined;
+    if (!row) return null;
+    this.db.prepare("DELETE FROM pending_transcripts WHERE id = ?").run(row.id as string);
+    return {
+      id: row.id as string,
+      transcriptPath: row.transcript_path as string,
+      project: row.project as string,
+      projectRoot: row.project_root as string,
+      provider: row.provider as string,
+      queuedAt: row.queued_at as number,
+    };
+  }
+
+  getPendingCount(): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) as count FROM pending_transcripts")
+      .get() as { count: number };
+    return row.count;
+  }
+
   close(): void {
     this.db.close();
   }
@@ -384,6 +478,7 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
       sourceQuote: row.source_quote as string,
       confidence: row.confidence as Observation["confidence"],
       project: row.project as string,
+      scope: (row.scope as Observation["scope"]) || "project",
     };
   }
 
@@ -401,6 +496,7 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
       supersededById: (row.superseded_by_id as string | null) ?? undefined,
       enforce: (row.enforce as number) === 1,
       project: row.project as string,
+      scope: (row.scope as KnowledgeItem["scope"]) || "project",
       createdAt: row.created_at as number,
       updatedAt: row.updated_at as number,
       lastSeenAt: row.last_seen_at as number,
