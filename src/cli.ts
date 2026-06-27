@@ -78,4 +78,12 @@ program
     }
   });
 
+program
+  .command("serve")
+  .description("Start Loop MCP server (for Cursor, Windsurf, Copilot)")
+  .action(async () => {
+    const { startMcpServer } = await import("./mcp.js");
+    await startMcpServer();
+  });
+
 program.parse();
