@@ -226,8 +226,10 @@ export async function startMcpServer(): Promise<void> {
           if (!output) output = "No compiled knowledge yet. This will populate as you use AgentCache across sessions.\n";
 
           const pendingCount = repo.getPendingCount();
-          if (pendingCount > 0) {
-            output = `<!-- ${pendingCount} previous session(s) pending compilation. Call compile_extract to process. -->\n\n` + output;
+          if (pendingCount > 20) {
+            output += `\n---\nKNOWLEDGE COMPILATION AVAILABLE: You have ${pendingCount} past sessions that haven't been compiled into knowledge yet. Ask the user: "I can compile knowledge from your past ${pendingCount} sessions (~60s). Process now or later?" If they agree, call compile_extract up to 5 times, submitting results with compile_submit after each. If they decline, move on.\n`;
+          } else if (pendingCount > 0) {
+            output += `\n<!-- ${pendingCount} session(s) pending compilation (below threshold, will process when backlog grows). -->\n`;
           }
 
           output += "\n---\nIMPORTANT: Submit observations incrementally as they happen during this session.\nWhen you learn something (rule, lesson, decision, context), call compile_submit immediately.\nDo NOT wait until the end — sessions can terminate without warning.\n";
