@@ -9,13 +9,28 @@ export interface IdeConfig {
   mcpConfigFormat: "claude-settings" | "mcp-json" | "yaml";
 }
 
+function getRooConfigPath(): string {
+  const home = homedir();
+  if (process.platform === "darwin") {
+    return join(home, "Library/Application Support/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json");
+  }
+  if (process.platform === "win32") {
+    return join(process.env.APPDATA || join(home, "AppData/Roaming"), "Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json");
+  }
+  return join(home, ".config/Code/User/globalStorage/rooveterinaryinc.roo-cline/settings/mcp_settings.json");
+}
+
+function rooDetected(): boolean {
+  return existsSync(getRooConfigPath());
+}
+
 export function detectInstalledIdes(): IdeConfig[] {
   const home = homedir();
   return [
     {
       name: "Claude Code",
       detected: existsSync(join(home, ".claude")),
-      mcpConfigPath: join(home, ".claude", "settings.json"),
+      mcpConfigPath: join(home, ".claude.json"),
       mcpConfigFormat: "claude-settings",
     },
     {
@@ -26,8 +41,8 @@ export function detectInstalledIdes(): IdeConfig[] {
     },
     {
       name: "Roo Code",
-      detected: existsSync(join(home, ".roo")),
-      mcpConfigPath: join(home, ".roo", "mcp.json"),
+      detected: rooDetected(),
+      mcpConfigPath: getRooConfigPath(),
       mcpConfigFormat: "mcp-json",
     },
     {

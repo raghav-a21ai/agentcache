@@ -1,25 +1,45 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { homedir } from "os";
+import { execSync } from "child_process";
 import type { IdeConfig } from "./ide-detector.js";
 
-const MCP_ENTRY_STDIO = {
-  type: "stdio",
-  command: "agentcache",
-  args: ["serve"],
-  env: {},
-};
+function findNodeBinary(): string {
+  try {
+    return execSync("which node", { encoding: "utf-8" }).trim();
+  } catch {
+    return "node";
+  }
+}
 
-const MCP_ENTRY_SIMPLE = {
-  command: "agentcache",
-  args: ["serve"],
-};
+function findAgentcacheScript(): string {
+  try {
+    const binPath = execSync("which agentcache", { encoding: "utf-8" }).trim();
+    return binPath;
+  } catch {
+    return join(dirname(dirname(__dirname)), "dist", "cli.js");
+  }
+}
+
+function isVscodeExtensionIde(ide: IdeConfig): boolean {
+  return ide.name === "Roo Code";
+}
+
+const ALL_TOOLS = [
+  "loop_inject_context",
+  "loop_compile_submit",
+  "loop_compile_cluster",
+  "loop_compile_extract",
+  "loop_enforce",
+  "loop_save_observation",
+  "loop_get_knowledge",
+  "loop_deprecate_knowledge",
+];
 
 export function registerMcpServer(ide: IdeConfig): boolean {
   if (!ide.detected) return false;
 
   if (ide.mcpConfigFormat === "claude-settings") {
-    // Claude Code CLI reads MCP servers from ~/.claude.json, not ~/.claude/settings.json
     const claudeJsonPath = join(homedir(), ".claude.json");
     let config: Record<string, any> = {};
     if (existsSync(claudeJsonPath)) {
@@ -27,8 +47,33 @@ export function registerMcpServer(ide: IdeConfig): boolean {
     }
     if (!config.mcpServers) config.mcpServers = {};
     if (config.mcpServers.agentcache) return false;
-    config.mcpServers.agentcache = MCP_ENTRY_STDIO;
+    config.mcpServers.agentcache = {
+      type: "stdio",
+      command: "agentcache",
+      args: ["serve"],
+      env: {},
+    };
     writeFileSync(claudeJsonPath, JSON.stringify(config, null, 2));
+
+    // Auto-allow all agentcache MCP tools in Claude Code permissions
+    const settingsPath = join(homedir(), ".claude", "settings.json");
+    if (existsSync(join(homedir(), ".claude"))) {
+      let settings: Record<string, any> = {};
+      if (existsSync(settingsPath)) {
+        try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch { settings = {}; }
+      }
+      if (!settings.permissions) settings.permissions = {};
+      if (!settings.permissions.allow) settings.permissions.allow = [];
+      const allowList = settings.permissions.allow as string[];
+      const mcpPerms = ALL_TOOLS.map(t => `mcp__agentcache__${t}`);
+      for (const perm of mcpPerms) {
+        if (!allowList.includes(perm)) {
+          allowList.push(perm);
+        }
+      }
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    }
+
     return true;
   }
 
@@ -39,7 +84,23 @@ export function registerMcpServer(ide: IdeConfig): boolean {
     }
     if (!config.mcpServers) config.mcpServers = {};
     if (config.mcpServers.agentcache) return false;
-    config.mcpServers.agentcache = MCP_ENTRY_SIMPLE;
+
+    if (isVscodeExtensionIde(ide)) {
+      const nodeBin = findNodeBinary();
+      const script = findAgentcacheScript();
+      config.mcpServers.agentcache = {
+        command: nodeBin,
+        args: [script, "serve"],
+        alwaysAllow: ALL_TOOLS,
+        disabled: false,
+      };
+    } else {
+      config.mcpServers.agentcache = {
+        command: "agentcache",
+        args: ["serve"],
+      };
+    }
+
     mkdirSync(dirname(ide.mcpConfigPath), { recursive: true });
     writeFileSync(ide.mcpConfigPath, JSON.stringify(config, null, 2));
     return true;
