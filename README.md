@@ -23,7 +23,7 @@ npm install -g agentcache
 Done. Start a new session in any IDE. AgentCache is already running.
 
 No `init`. No `setup`. No config. No second command. The install itself:
-1. Creates `~/.loop/loop.db` (your knowledge store)
+1. Creates `~/.agentcache/agentcache.db` (your knowledge store)
 2. Detects installed IDEs (Claude Code, Cursor, Roo Code, Windsurf, Continue, Codex)
 3. Registers itself as an MCP server in each
 4. Sets up Claude Code hooks for automatic transcript recovery
@@ -49,7 +49,8 @@ No `init`. No `setup`. No config. No second command. The install itself:
 │                 └────────────┬────────────┘                      │
 │                              │                                    │
 │                    ┌─────────┴─────────┐                         │
-│                    │  ~/.loop/loop.db   │                         │
+│                    │ ~/.agentcache/     │                         │
+│                    │  agentcache.db     │                         │
 │                    │  (SQLite + WAL)    │                         │
 │                    └───────────────────┘                         │
 └─────────────────────────────────────────────────────────────────┘
@@ -57,8 +58,8 @@ No `init`. No `setup`. No config. No second command. The install itself:
 
 ### The Cycle
 
-1. **Session starts** — agent calls `loop_inject_context` → gets compiled rules, lessons, decisions
-2. **During session** — agent calls `loop_compile_submit` incrementally as it learns things
+1. **Session starts** — agent calls `agentcache_inject_context` → gets compiled rules, lessons, decisions
+2. **During session** — agent calls `agentcache_compile_submit` incrementally as it learns things
 3. **Session ends** — knowledge is already saved. If agent didn't submit (abrupt exit), transcript recovery handles it next session.
 
 ### Knowledge Types
@@ -78,14 +79,14 @@ AgentCache exposes 8 tools via the Model Context Protocol:
 
 | Tool | Purpose |
 |------|---------|
-| `loop_inject_context` | Load compiled knowledge at session start |
-| `loop_compile_submit` | Submit observations incrementally during session |
-| `loop_compile_cluster` | Resolve clustering when observations overlap existing knowledge |
-| `loop_compile_extract` | Process queued transcripts from previous sessions |
-| `loop_enforce` | Check tool calls against enforced policy rules |
-| `loop_save_observation` | Save a permanent observation (USER authority, never auto-deprecated) |
-| `loop_get_knowledge` | Query the knowledge database |
-| `loop_deprecate_knowledge` | Mark knowledge as deprecated when it's no longer valid |
+| `agentcache_inject_context` | Load compiled knowledge at session start |
+| `agentcache_compile_submit` | Submit observations incrementally during session |
+| `agentcache_compile_cluster` | Resolve clustering when observations overlap existing knowledge |
+| `agentcache_compile_extract` | Process queued transcripts from previous sessions |
+| `agentcache_enforce` | Check tool calls against enforced policy rules |
+| `agentcache_save_observation` | Save a permanent observation (USER authority, never auto-deprecated) |
+| `agentcache_get_knowledge` | Query the knowledge database |
+| `agentcache_deprecate_knowledge` | Mark knowledge as deprecated when it's no longer valid |
 
 ## CLI Commands
 
@@ -114,7 +115,7 @@ AgentCache uses MCP (Model Context Protocol) as its only interface. Any IDE that
 
 ### Developer-Scoped
 
-One database per developer (`~/.loop/loop.db`), not per project. Rules and lessons learned in one project benefit all your projects. Project-specific decisions stay scoped to their project.
+One database per developer (`~/.agentcache/agentcache.db`), not per project. Rules and lessons learned in one project benefit all your projects. Project-specific decisions stay scoped to their project.
 
 ### Resilient to Abrupt Exits
 
@@ -154,11 +155,11 @@ Cursor does not support programmatic auto-approve for MCP tools. After installin
 
 ## Data Storage
 
-All data lives in `~/.loop/loop.db` (SQLite with WAL mode for concurrent access).
+All data lives in `~/.agentcache/agentcache.db` (SQLite with WAL mode for concurrent access).
 
 ```
-~/.loop/
-└── loop.db          # All knowledge, observations, sessions, pending queue
+~/.agentcache/
+└── agentcache.db    # All knowledge, observations, sessions, pending queue
 ```
 
 No data leaves your machine. No network calls. No telemetry. No accounts.
@@ -193,8 +194,8 @@ Projects are identified by a hash of their full filesystem path, not just the fo
 ## Contributing
 
 ```bash
-git clone https://github.com/raghav-a21ai/loop-eng
-cd loop-eng
+git clone https://github.com/raghav-a21ai/agentcache
+cd agentcache
 npm install
 npm run build
 npm test

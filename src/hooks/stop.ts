@@ -1,10 +1,10 @@
-import { getDbPath, isLoopInitialized, findProjectRoot, getProjectId } from "../utils/paths.js";
+import { getDbPath, isInitialized, findProjectRoot, getProjectId } from "../utils/paths.js";
 import { findLatestTranscript } from "../utils/transcript.js";
 import { SqliteKnowledgeRepository } from "../storage/sqlite.js";
 import { randomUUID } from "crypto";
 
 export async function handleStop(payload?: { transcript_path?: string }): Promise<void> {
-  if (!isLoopInitialized()) return;
+  if (!isInitialized()) return;
 
   const transcriptPath = payload?.transcript_path || findLatestTranscript();
   if (!transcriptPath) return;

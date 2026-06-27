@@ -1,19 +1,28 @@
-import { existsSync } from "fs";
-import { join } from "path";
+import { existsSync, renameSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
 import { homedir } from "os";
 import { createHash } from "crypto";
 import { getGitRoot } from "./git.js";
 
-export function getGlobalLoopDir(): string {
-  return join(homedir(), ".loop");
+export function getDataDir(): string {
+  return join(homedir(), ".agentcache");
 }
 
 export function getDbPath(): string {
-  return join(getGlobalLoopDir(), "loop.db");
+  return join(getDataDir(), "agentcache.db");
 }
 
-export function isLoopInitialized(): boolean {
+export function isInitialized(): boolean {
   return existsSync(getDbPath());
+}
+
+export function migrateFromLegacy(): void {
+  const legacyDb = join(homedir(), ".loop", "loop.db");
+  const newDb = getDbPath();
+  if (existsSync(legacyDb) && !existsSync(newDb)) {
+    mkdirSync(dirname(newDb), { recursive: true });
+    renameSync(legacyDb, newDb);
+  }
 }
 
 export function findProjectRoot(cwd?: string): string {

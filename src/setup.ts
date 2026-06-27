@@ -1,18 +1,19 @@
 import { mkdirSync } from "fs";
-import { getGlobalLoopDir, getDbPath } from "./utils/paths.js";
+import { getDataDir, getDbPath, migrateFromLegacy } from "./utils/paths.js";
 import { SqliteKnowledgeRepository } from "./storage/sqlite.js";
 import { detectInstalledIdes } from "./utils/ide-detector.js";
 import { registerMcpServer, registerClaudeHooks } from "./utils/ide-registrar.js";
 
 export async function runSetup(): Promise<void> {
-  mkdirSync(getGlobalLoopDir(), { recursive: true });
+  migrateFromLegacy();
+  mkdirSync(getDataDir(), { recursive: true });
   const repo = new SqliteKnowledgeRepository(getDbPath());
   repo.close();
 
   const ides = detectInstalledIdes();
   const detected = ides.filter((i) => i.detected);
 
-  console.log(`\nLoop setup complete.`);
+  console.log(`\nAgentCache setup complete.`);
   console.log(`  Central DB: ${getDbPath()}\n`);
 
   if (detected.length === 0) {
@@ -31,5 +32,5 @@ export async function runSetup(): Promise<void> {
     console.log(`\n  Claude Code hooks: registered (Stop, SessionStart, PreToolUse)`);
   }
 
-  console.log(`\nDone. Loop compiles knowledge across all sessions and IDEs.`);
+  console.log(`\nDone. AgentCache compiles knowledge across all sessions and IDEs.`);
 }

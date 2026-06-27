@@ -1,5 +1,5 @@
 import { mkdirSync } from "fs";
-import { getGlobalLoopDir, getDbPath } from "./utils/paths.js";
+import { getDataDir, getDbPath, migrateFromLegacy } from "./utils/paths.js";
 import { SqliteKnowledgeRepository } from "./storage/sqlite.js";
 import { detectInstalledIdes } from "./utils/ide-detector.js";
 import { registerMcpServer, registerClaudeHooks } from "./utils/ide-registrar.js";
@@ -9,7 +9,8 @@ if (process.env.CI) {
 }
 
 try {
-  mkdirSync(getGlobalLoopDir(), { recursive: true });
+  migrateFromLegacy();
+  mkdirSync(getDataDir(), { recursive: true });
   const repo = new SqliteKnowledgeRepository(getDbPath());
   repo.close();
 

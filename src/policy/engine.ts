@@ -11,9 +11,9 @@ export interface PolicyResult {
 }
 
 const HARDCODED_BLOCKS: Array<{ pattern: RegExp; reason: string }> = [
-  { pattern: /git\s+push\s+--force\s+(origin\s+)?(main|master)/i, reason: "Force-push to main/master is blocked by Loop policy" },
-  { pattern: /rm\s+-rf\s+[\/~]/i, reason: "Destructive rm -rf on root or home is blocked by Loop policy" },
-  { pattern: />\s*(.*\.(env|pem|key))/i, reason: "Writing to sensitive files (.env, .pem, .key) is blocked by Loop policy" },
+  { pattern: /git\s+push\s+--force\s+(origin\s+)?(main|master)/i, reason: "Force-push to main/master is blocked by AgentCache policy" },
+  { pattern: /rm\s+-rf\s+[\/~]/i, reason: "Destructive rm -rf on root or home is blocked by AgentCache policy" },
+  { pattern: />\s*(.*\.(env|pem|key))/i, reason: "Writing to sensitive files (.env, .pem, .key) is blocked by AgentCache policy" },
 ];
 
 export function evaluatePolicy(

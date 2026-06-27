@@ -1,6 +1,6 @@
 import { statSync } from "fs";
 import { basename, dirname } from "path";
-import { getDbPath, isLoopInitialized, getProjectId } from "../utils/paths.js";
+import { getDbPath, isInitialized, getProjectId } from "../utils/paths.js";
 import { findAllClaudeTranscripts, findAllContinueTranscripts } from "../utils/transcript.js";
 import { SqliteKnowledgeRepository } from "../storage/sqlite.js";
 import { randomUUID } from "crypto";
@@ -17,7 +17,7 @@ function inferProjectRootFromTranscriptPath(path: string): string {
 }
 
 export async function handleSessionStart(): Promise<void> {
-  if (!isLoopInitialized()) return;
+  if (!isInitialized()) return;
 
   const repo = new SqliteKnowledgeRepository(getDbPath());
   const compiledPaths = new Set(repo.getAllCompiledTranscriptPaths());

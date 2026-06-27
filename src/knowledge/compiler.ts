@@ -229,7 +229,7 @@ function formatDiagnostics(
   sessionId: string
 ): string {
   return [
-    `Loop Compiler v${COMPILER_VERSION}`,
+    `AgentCache Compiler v${COMPILER_VERSION}`,
     `Project: ${project} | Session: ${sessionId}`,
     `  ${extracted} observations processed`,
     autoReinforced > 0 ? `  ${autoReinforced} auto-reinforced (no LLM needed)` : "",

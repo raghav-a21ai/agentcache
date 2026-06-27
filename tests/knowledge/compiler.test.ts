@@ -21,9 +21,9 @@ describe("Compiler Steps", () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), "loop-compiler-"));
-    repo = new SqliteKnowledgeRepository(join(tmpDir, "loop.db"));
-    mkdirSync(join(tmpDir, ".loop", "generated"), { recursive: true });
+    tmpDir = mkdtempSync(join(tmpdir(), "agentcache-compiler-"));
+    repo = new SqliteKnowledgeRepository(join(tmpDir, "agentcache.db"));
+    mkdirSync(join(tmpDir, ".agentcache", "generated"), { recursive: true });
   });
 
   afterEach(() => {

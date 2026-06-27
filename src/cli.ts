@@ -10,7 +10,7 @@ program
 
 program
   .command("setup")
-  .description("Detect IDEs and register Loop (runs automatically on install)")
+  .description("Detect IDEs and register AgentCache (runs automatically on install)")
   .action(async () => {
     const { runSetup } = await import("./setup.js");
     await runSetup();
@@ -18,7 +18,7 @@ program
 
 program
   .command("serve")
-  .description("Start Loop MCP server (spawned by IDEs automatically)")
+  .description("Start AgentCache MCP server (spawned by IDEs automatically)")
   .action(async () => {
     const { startMcpServer } = await import("./mcp.js");
     await startMcpServer();
@@ -70,11 +70,11 @@ program
 
 program
   .command("status")
-  .description("Show Loop knowledge stats")
+  .description("Show AgentCache knowledge stats")
   .action(async () => {
-    const { getDbPath, isLoopInitialized, findProjectRoot, getProjectId, getProjectDisplayName } = await import("./utils/paths.js");
-    if (!isLoopInitialized()) {
-      console.log("Loop not initialized. Run: agentcache setup");
+    const { getDbPath, isInitialized, findProjectRoot, getProjectId, getProjectDisplayName } = await import("./utils/paths.js");
+    if (!isInitialized()) {
+      console.log("AgentCache not initialized. Run: agentcache setup");
       return;
     }
     const { SqliteKnowledgeRepository } = await import("./storage/sqlite.js");
@@ -92,7 +92,7 @@ program
     const pending = repo.getPendingCount();
     repo.close();
 
-    console.log(`Loop — ${displayName} (${project})`);
+    console.log(`AgentCache — ${displayName} (${project})`);
     console.log(`  ${items.length} items (${globalItems.length} global, ${projectItems.length} project)`);
     console.log(`  ${rules.length} rules | ${lessons.length} lessons | ${decisions.length} decisions | ${context.length} context`);
     if (pending > 0) console.log(`  ${pending} sessions pending compilation`);

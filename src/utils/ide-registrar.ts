@@ -26,14 +26,14 @@ function isVscodeExtensionIde(ide: IdeConfig): boolean {
 }
 
 const ALL_TOOLS = [
-  "loop_inject_context",
-  "loop_compile_submit",
-  "loop_compile_cluster",
-  "loop_compile_extract",
-  "loop_enforce",
-  "loop_save_observation",
-  "loop_get_knowledge",
-  "loop_deprecate_knowledge",
+  "agentcache_inject_context",
+  "agentcache_compile_submit",
+  "agentcache_compile_cluster",
+  "agentcache_compile_extract",
+  "agentcache_enforce",
+  "agentcache_save_observation",
+  "agentcache_get_knowledge",
+  "agentcache_deprecate_knowledge",
 ];
 
 export function registerMcpServer(ide: IdeConfig): boolean {
@@ -65,15 +65,19 @@ function registerClaudeCode(): boolean {
     try { config = JSON.parse(readFileSync(claudeJsonPath, "utf-8")); } catch { config = {}; }
   }
   if (!config.mcpServers) config.mcpServers = {};
-  if (config.mcpServers.agentcache) return false;
-  config.mcpServers.agentcache = {
-    type: "stdio",
-    command: "agentcache",
-    args: ["serve"],
-    env: {},
-  };
-  writeFileSync(claudeJsonPath, JSON.stringify(config, null, 2));
+  let serverRegistered = false;
+  if (!config.mcpServers.agentcache) {
+    config.mcpServers.agentcache = {
+      type: "stdio",
+      command: "agentcache",
+      args: ["serve"],
+      env: {},
+    };
+    writeFileSync(claudeJsonPath, JSON.stringify(config, null, 2));
+    serverRegistered = true;
+  }
 
+  // Always ensure permissions are up-to-date (handles tool rename migrations)
   const settingsPath = join(homedir(), ".claude", "settings.json");
   if (existsSync(join(homedir(), ".claude"))) {
     let settings: Record<string, any> = {};
@@ -84,15 +88,19 @@ function registerClaudeCode(): boolean {
     if (!settings.permissions.allow) settings.permissions.allow = [];
     const allowList = settings.permissions.allow as string[];
     const mcpPerms = ALL_TOOLS.map(t => `mcp__agentcache__${t}`);
+    let permsUpdated = false;
     for (const perm of mcpPerms) {
       if (!allowList.includes(perm)) {
         allowList.push(perm);
+        permsUpdated = true;
       }
     }
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    if (permsUpdated) {
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    }
   }
 
-  return true;
+  return serverRegistered;
 }
 
 function registerMcpJson(ide: IdeConfig): boolean {
@@ -101,29 +109,33 @@ function registerMcpJson(ide: IdeConfig): boolean {
     try { config = JSON.parse(readFileSync(ide.mcpConfigPath, "utf-8")); } catch { config = {}; }
   }
   if (!config.mcpServers) config.mcpServers = {};
-  if (config.mcpServers.agentcache) return false;
+
+  const existing = config.mcpServers.agentcache;
 
   if (isVscodeExtensionIde(ide)) {
     const nodeBin = findNodeBinary();
     const script = findAgentcacheScript();
+    // Always update alwaysAllow to handle tool rename migrations
     config.mcpServers.agentcache = {
       command: nodeBin,
       args: [script, "serve"],
       alwaysAllow: ALL_TOOLS,
       disabled: false,
     };
-  } else {
+  } else if (!existing) {
     // Cursor, Windsurf — GUI apps may not inherit shell PATH
     const agentcacheBin = findAgentcacheScript();
     config.mcpServers.agentcache = {
       command: agentcacheBin,
       args: ["serve"],
     };
+  } else {
+    return false;
   }
 
   mkdirSync(dirname(ide.mcpConfigPath), { recursive: true });
   writeFileSync(ide.mcpConfigPath, JSON.stringify(config, null, 2));
-  return true;
+  return !existing;
 }
 
 function registerContinue(ide: IdeConfig): boolean {
@@ -189,18 +201,18 @@ export function registerClaudeHooks(): boolean {
   if (!settings.hooks) settings.hooks = {};
   const hooks = settings.hooks as Record<string, unknown[]>;
 
-  const loopHooks: Record<string, unknown[]> = {
+  const agentcacheHooks: Record<string, unknown[]> = {
     Stop: [{ matcher: "", hooks: [{ type: "command", command: "agentcache compile-session" }] }],
     SessionStart: [{ matcher: "", hooks: [{ type: "command", command: "agentcache discover" }] }],
     PreToolUse: [{ matcher: "", hooks: [{ type: "command", command: "agentcache enforce" }] }],
   };
 
   let registered = false;
-  for (const [event, hookConfig] of Object.entries(loopHooks)) {
+  for (const [event, hookConfig] of Object.entries(agentcacheHooks)) {
     if (!hooks[event]) hooks[event] = [];
     const existing = hooks[event] as Array<{ hooks?: Array<{ command?: string }> }>;
-    const hasLoop = existing.some((h) => h.hooks?.some((hh) => hh.command?.includes("agentcache")));
-    if (!hasLoop) {
+    const hasAgentcache = existing.some((h) => h.hooks?.some((hh) => hh.command?.includes("agentcache")));
+    if (!hasAgentcache) {
       hooks[event].push(...hookConfig);
       registered = true;
     }
