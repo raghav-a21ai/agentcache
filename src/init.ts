@@ -4,7 +4,23 @@ import { homedir } from "os";
 import { findProjectRoot, getLoopDir } from "./utils/paths.js";
 import { SqliteKnowledgeRepository } from "./storage/sqlite.js";
 
-export async function initProject(opts: { cursor?: boolean } = {}): Promise<void> {
+export function getGlobalConfigPath(): string {
+  return join(homedir(), ".loop", "config.json");
+}
+
+export function setApiKey(apiKey: string): void {
+  const configPath = getGlobalConfigPath();
+  mkdirSync(join(configPath, ".."), { recursive: true });
+  let config: Record<string, unknown> = {};
+  if (existsSync(configPath)) {
+    try { config = JSON.parse(readFileSync(configPath, "utf-8")); } catch {}
+  }
+  config.apiKey = apiKey;
+  config.provider = "anthropic";
+  writeFileSync(configPath, JSON.stringify(config, null, 2));
+}
+
+export async function initProject(opts: { cursor?: boolean; apiKey?: string } = {}): Promise<void> {
   const projectRoot = findProjectRoot();
   const loopDir = getLoopDir(projectRoot);
   const generatedDir = join(loopDir, "generated");
@@ -18,6 +34,10 @@ export async function initProject(opts: { cursor?: boolean } = {}): Promise<void
   const configPath = join(loopDir, "config.json");
   if (!existsSync(configPath)) {
     writeFileSync(configPath, JSON.stringify({ project: projectRoot.split("/").pop(), reviewMode: false }, null, 2));
+  }
+
+  if (opts.apiKey) {
+    setApiKey(opts.apiKey);
   }
 
   for (const file of ["RULES.md", "LESSONS.md", "DECISIONS.md", "CONTEXT.md"]) {

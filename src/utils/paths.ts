@@ -28,6 +28,10 @@ export function getConfigPath(projectRoot: string): string {
   return join(getLoopDir(projectRoot), "config.json");
 }
 
+export function getPendingQueuePath(projectRoot: string): string {
+  return join(getLoopDir(projectRoot), "pending.jsonl");
+}
+
 export function isLoopInitialized(projectRoot: string): boolean {
   return existsSync(getDbPath(projectRoot));
 }

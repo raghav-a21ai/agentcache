@@ -1,42 +1,23 @@
-import { findProjectRoot, getDbPath, isLoopInitialized } from "../utils/paths.js";
-import { findLatestTranscript, parseTranscript } from "../utils/transcript.js";
-import { SqliteKnowledgeRepository } from "../storage/sqlite.js";
-import { runCompiler } from "../knowledge/compiler.js";
-import { randomUUID } from "crypto";
+import { appendFileSync, mkdirSync } from "fs";
+import { dirname } from "path";
+import { findProjectRoot, getPendingQueuePath, isLoopInitialized } from "../utils/paths.js";
+import { findLatestTranscript } from "../utils/transcript.js";
 
 export async function handleStop(): Promise<void> {
   const projectRoot = findProjectRoot();
   if (!isLoopInitialized(projectRoot)) return;
 
-  const dbPath = getDbPath(projectRoot);
-  const repo = new SqliteKnowledgeRepository(dbPath);
+  const transcriptPath = findLatestTranscript();
+  if (!transcriptPath) return;
 
-  try {
-    const transcriptPath = findLatestTranscript();
-    if (!transcriptPath) {
-      console.error("Loop: no transcript found, skipping compile");
-      return;
-    }
+  const queuePath = getPendingQueuePath(projectRoot);
+  mkdirSync(dirname(queuePath), { recursive: true });
 
-    const events = parseTranscript(transcriptPath);
-    if (events.length === 0) {
-      console.error("Loop: empty transcript, skipping compile");
-      return;
-    }
+  const entry = JSON.stringify({
+    transcriptPath,
+    queuedAt: Date.now(),
+    project: projectRoot.split("/").pop() || "unknown",
+  });
 
-    const sessionId = `sess_${randomUUID().slice(0, 8)}`;
-    const project = projectRoot.split("/").pop() || "unknown";
-
-    const { diagnostics } = await runCompiler({
-      repo,
-      events,
-      sessionId,
-      project,
-      projectRoot,
-    });
-
-    console.error(diagnostics.toString());
-  } finally {
-    repo.close();
-  }
+  appendFileSync(queuePath, entry + "\n", "utf-8");
 }
