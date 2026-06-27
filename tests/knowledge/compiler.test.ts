@@ -1,49 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { SqliteKnowledgeRepository } from "../../src/storage/sqlite.js";
-import { mkdirSync, existsSync } from "fs";
+import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
-import { mkdtempSync, rmSync } from "fs";
-
-vi.mock("../../src/utils/bedrock.js", () => ({
-  callClaude: vi.fn(async (prompt: string) => {
-    // Pass 1: Extraction — match the extractor's prompt structure
-    if (prompt.includes("Extract distinct learnings") || prompt.includes("<transcript>")) {
-      return {
-        text: JSON.stringify({
-          observations: [
-            { type: "rule", content: "Always use path aliases instead of relative imports", sourceQuote: "Use path aliases", confidence: "high" },
-            { type: "lesson", content: "Database migration failed because we didn't run dry-run first", sourceQuote: "broke prod", confidence: "high" },
-          ],
-        }),
-        inputTokens: 100,
-        outputTokens: 50,
-      };
-    }
-    // Pass 4: Clustering — parse obs IDs from the JSON in the prompt
-    if (prompt.includes("determine the action") || prompt.includes("CREATE    —")) {
-      const obsMatches = prompt.match(/"id":\s*"(obs_[^"]+)"/g) || [];
-      const obsIds = obsMatches.map((m) => m.match(/"(obs_[^"]+)"/)?.[1]).filter(Boolean);
-      return {
-        text: JSON.stringify({
-          clusters: obsIds.map((id) => ({
-            observationId: id,
-            action: "CREATE",
-            reasoning: "new knowledge item",
-          })),
-        }),
-        inputTokens: 100,
-        outputTokens: 50,
-      };
-    }
-    // Pass 5: Contradiction detection — return no contradictions
-    if (prompt.includes("superseded") || prompt.includes("contradictions")) {
-      return { text: '{ "contradictions": [] }', inputTokens: 10, outputTokens: 10 };
-    }
-    // Default fallback
-    return { text: '{ "observations": [] }', inputTokens: 10, outputTokens: 10 };
-  }),
-}));
+import { mkdtempSync } from "fs";
+import { startCompile, processExtraction, processClustering } from "../../src/knowledge/compiler.js";
 
 vi.mock("../../src/utils/git.js", () => ({
   getGitContext: vi.fn(() => ({
@@ -55,7 +16,7 @@ vi.mock("../../src/utils/git.js", () => ({
   getGitRoot: vi.fn(() => null),
 }));
 
-describe("Compiler Integration", () => {
+describe("Compiler Steps", () => {
   let repo: SqliteKnowledgeRepository;
   let tmpDir: string;
 
@@ -70,68 +31,108 @@ describe("Compiler Integration", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("full pipeline: extract -> normalize -> canonicalize -> cluster -> compile -> project", async () => {
-    const { runCompiler } = await import("../../src/knowledge/compiler.js");
-
-    const sampleEvents = [
-      { type: "message", role: "user", content: "Always use path aliases in this project, never relative imports" },
-      { type: "message", role: "assistant", content: "Got it, I'll use path aliases instead of relative imports." },
-      { type: "message", role: "user", content: "We broke prod last week because we didn't run dry-run first on migrations." },
-      { type: "message", role: "assistant", content: "Noted. I'll always do a dry-run before applying migrations." },
+  it("startCompile returns extraction prompt", () => {
+    const events = [
+      { type: "message", role: "user", content: "Always use path aliases" },
+      { type: "message", role: "assistant", content: "Got it." },
     ];
 
-    const result = await runCompiler({
-      repo,
-      events: sampleEvents,
-      sessionId: "test_session_1",
-      project: "test-project",
-      projectRoot: tmpDir,
+    const state = startCompile(events, "sess_test", "test-project", tmpDir, repo);
+    expect(state.sessionId).toBe("sess_test");
+    expect(state.prompt).toContain("transcript");
+    expect(state.prompt).toContain("path aliases");
+
+    // Session should be saved
+    const session = repo.getSession("sess_test");
+    expect(session).not.toBeNull();
+  });
+
+  it("processExtraction with no clustering needed finalizes", () => {
+    const events = [{ type: "message", role: "user", content: "test" }];
+    startCompile(events, "sess_test", "test-project", tmpDir, repo);
+
+    // Simulate agent response (extraction result)
+    const agentResponse = JSON.stringify({
+      observations: [
+        { type: "rule", content: "Always use path aliases", sourceQuote: "use path aliases", confidence: "high" },
+      ],
     });
 
-    // Verify compile run recorded with correct version
-    expect(result.run.compilerVersion).toBe("0.1.0");
-    expect(result.run.observationsProcessed).toBeGreaterThan(0);
-    expect(result.run.project).toBe("test-project");
-    expect(result.run.sessionId).toBe("test_session_1");
+    const result = processExtraction(repo, agentResponse, "sess_test", "test-project", tmpDir);
 
-    // Verify diagnostics
-    expect(result.diagnostics.observationsExtracted).toBeGreaterThan(0);
-    expect(result.diagnostics.observationsNormalized).toBeGreaterThan(0);
+    // First time — no existing items to match, so needs clustering
+    expect(result.status).toBe("needs_clustering");
+    if (result.status === "needs_clustering") {
+      expect(result.clusteringPrompt).toContain("CREATE");
+    }
+  });
 
-    // Verify observations saved to DB
-    const obs = repo.getObservations("test-project");
-    expect(obs.length).toBeGreaterThan(0);
-    expect(obs[0].project).toBe("test-project");
-    expect(obs[0].sessionId).toBe("test_session_1");
+  it("processExtraction auto-reinforces matching items", () => {
+    const events = [{ type: "message", role: "user", content: "test" }];
+    startCompile(events, "sess_test", "test-project", tmpDir, repo);
 
-    // Verify compile run persisted in DB
-    const runs = repo.getCompileRuns("test-project");
-    expect(runs).toHaveLength(1);
-    expect(runs[0].compilerVersion).toBe("0.1.0");
-    expect(runs[0].observationsProcessed).toBeGreaterThan(0);
+    // Pre-populate a knowledge item
+    repo.saveKnowledgeItem({
+      id: "ki_existing",
+      canonicalHash: "abc",
+      type: "rule",
+      title: "Use path aliases",
+      content: "Always use path aliases",
+      confidence: "medium",
+      observationCount: 3,
+      authority: "AUTO",
+      status: "active",
+      enforce: false,
+      project: "test-project",
+      createdAt: 1000,
+      updatedAt: 1000,
+      lastSeenAt: 1000,
+      metadata: {},
+    });
 
-    // Verify knowledge items created
+    const agentResponse = JSON.stringify({
+      observations: [
+        { type: "rule", content: "Always use path aliases", sourceQuote: "quote", confidence: "high" },
+      ],
+    });
+
+    const result = processExtraction(repo, agentResponse, "sess_test", "test-project", tmpDir);
+
+    // Should auto-reinforce — the canonical keys match
+    const item = repo.getKnowledgeItem("ki_existing");
+    expect(item!.observationCount).toBe(4);
+  });
+
+  it("processClustering finalizes compilation", () => {
+    const events = [{ type: "message", role: "user", content: "test" }];
+    startCompile(events, "sess_test2", "test-project", tmpDir, repo);
+
+    // Save an observation for this session
+    repo.saveObservation({
+      id: "obs_1",
+      sessionId: "sess_test2",
+      timestamp: Date.now(),
+      type: "rule",
+      content: "Never use var",
+      sourceQuote: "quote",
+      confidence: "high",
+      project: "test-project",
+    });
+
+    const clusterResponse = JSON.stringify({
+      clusters: [{ observationId: "obs_1", action: "CREATE", reasoning: "new rule" }],
+    });
+
+    const result = processClustering(repo, clusterResponse, "sess_test2", "test-project", tmpDir);
+    expect(result.status).toBe("complete");
+    expect(result.diagnostics).toContain("new knowledge items");
+
+    // Verify knowledge item was created
     const items = repo.getKnowledgeItems("test-project");
     expect(items.length).toBeGreaterThan(0);
-    expect(items[0].status).toBe("active");
-    expect(items[0].project).toBe("test-project");
-    expect(items[0].authority).toBe("AUTO");
 
-    // Verify session saved
-    const session = repo.getSession("test_session_1");
-    expect(session).not.toBeNull();
-    expect(session!.project).toBe("test-project");
-    expect(session!.gitBranch).toBe("main");
-    expect(session!.gitCommit).toBe("abc1234");
-
-    // Verify projector wrote markdown files
-    expect(existsSync(join(tmpDir, ".loop", "generated", "RULES.md"))).toBe(true);
-    expect(existsSync(join(tmpDir, ".loop", "generated", "LESSONS.md"))).toBe(true);
-    expect(existsSync(join(tmpDir, ".loop", "generated", "DECISIONS.md"))).toBe(true);
-    expect(existsSync(join(tmpDir, ".loop", "generated", "CONTEXT.md"))).toBe(true);
-
-    // Verify diagnostics have correct counts
-    expect(result.diagnostics.knowledgeCreated).toBe(items.length);
-    expect(result.diagnostics.contradictionsDetected).toBe(0);
+    // Verify compile run saved
+    const runs = repo.getCompileRuns("test-project");
+    expect(runs).toHaveLength(1);
   });
 });

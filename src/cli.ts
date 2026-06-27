@@ -3,7 +3,7 @@ import { Command } from "commander";
 import { handleStop } from "./hooks/stop.js";
 import { handleSessionStart } from "./hooks/session-start.js";
 import { handlePreToolUse } from "./hooks/pre-tool-use.js";
-import { initProject, setApiKey } from "./init.js";
+import { initProject } from "./init.js";
 
 const program = new Command();
 
@@ -16,63 +16,16 @@ program
   .command("init")
   .description("Initialize Loop in the current project")
   .option("--cursor", "Also configure Cursor MCP")
-  .option("--api-key <key>", "Anthropic API key (stored in ~/.loop/config.json)")
   .action(async (opts) => {
     await initProject(opts);
   });
 
 program
-  .command("config")
-  .description("Set Loop configuration")
-  .option("--api-key <key>", "Set Anthropic API key")
-  .action((opts) => {
-    if (opts.apiKey) {
-      setApiKey(opts.apiKey);
-      console.log("API key saved to ~/.loop/config.json");
-    } else {
-      console.log("Usage: loop config --api-key <your-anthropic-api-key>");
-    }
-  });
-
-program
   .command("compile")
-  .description("Run the knowledge compiler (immediate, no queue)")
-  .option("--from-scratch", "Rebuild all knowledge from observations")
-  .option("--dry-run", "Print what would happen without writing")
+  .description("Queue current session for compilation (happens at next session start)")
   .action(async () => {
-    const { findProjectRoot, getDbPath, isLoopInitialized } = await import("./utils/paths.js");
-    const { findLatestTranscript, parseTranscript } = await import("./utils/transcript.js");
-    const { SqliteKnowledgeRepository } = await import("./storage/sqlite.js");
-    const { runCompiler } = await import("./knowledge/compiler.js");
-    const { randomUUID } = await import("crypto");
-
-    const projectRoot = findProjectRoot();
-    if (!isLoopInitialized(projectRoot)) {
-      console.error("Loop not initialized. Run: loop init");
-      process.exit(1);
-    }
-
-    const transcriptPath = findLatestTranscript();
-    if (!transcriptPath) {
-      console.error("No transcript found.");
-      process.exit(1);
-    }
-
-    const events = parseTranscript(transcriptPath);
-    if (events.length === 0) {
-      console.error("Empty transcript.");
-      process.exit(1);
-    }
-
-    const repo = new SqliteKnowledgeRepository(getDbPath(projectRoot));
-    try {
-      const project = projectRoot.split("/").pop() || "unknown";
-      const sessionId = `sess_${randomUUID().slice(0, 8)}`;
-      const { diagnostics } = await runCompiler({ repo, events, sessionId, project, projectRoot });
-      console.error(diagnostics.toString());
-    } finally {
-      repo.close();
-    }
+    await handleStop();
+    console.log("Session queued for compilation. It will be compiled when the next agent session starts via MCP tools.");
   });
 
 program
