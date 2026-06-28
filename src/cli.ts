@@ -6,7 +6,7 @@ const program = new Command();
 program
   .name("agentcache")
   .description("Engineering Knowledge Compiler — universal, zero-config")
-  .version("0.3.0");
+  .version("0.3.1");
 
 program
   .command("setup")

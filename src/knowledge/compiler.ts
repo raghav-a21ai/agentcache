@@ -8,6 +8,7 @@ import { buildClusteringPrompt, parseClusteringResponse, CLUSTER_PROMPT_VERSION,
 import { CONTRADICTION_PROMPT_VERSION } from "./passes/5-contradiction.js";
 import { compileKnowledge } from "./passes/6-compile.js";
 import { projectToMarkdown } from "./passes/7-projector.js";
+import { projectToSkills } from "./passes/7b-skill-projector.js";
 import { getDataDir } from "../utils/paths.js";
 import { getGitContext } from "../utils/git.js";
 
@@ -95,7 +96,9 @@ export function processExtraction(
 
   if (canonicalized.needsClustering.length === 0) {
     saveCompileRun(repo, sessionId, project, normalized.length, canonicalized.autoReinforced.length, 0, 0, 0, 0, 0, Date.now());
-    projectToMarkdown(repo.getKnowledgeItems(project, { status: "active" }), getDataDir(), COMPILER_VERSION);
+    const activeItems = repo.getKnowledgeItems(project, { status: "active" });
+    projectToMarkdown(activeItems, getDataDir(), COMPILER_VERSION);
+    projectToSkills(activeItems, projectRoot);
     return {
       status: "complete",
       diagnostics: formatDiagnostics(normalized.length, canonicalized.autoReinforced.length, 0, 0, 0, 0, 0, project, sessionId),
@@ -179,7 +182,9 @@ export function processClustering(
   const totalObs = sessionObs.length;
   saveCompileRun(repo, sessionId, project, totalObs, 0, compiled.created.length, compiled.reinforced.length, compiled.superseded.length, compiled.deprecated.length, compiled.ignored, startedAt);
 
-  projectToMarkdown(repo.getKnowledgeItems(project, { status: "active" }), getDataDir(), COMPILER_VERSION);
+  const activeItems = repo.getKnowledgeItems(project, { status: "active" });
+  projectToMarkdown(activeItems, getDataDir(), COMPILER_VERSION);
+  projectToSkills(activeItems, projectRoot);
 
   return {
     status: "complete",
