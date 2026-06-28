@@ -7,6 +7,7 @@ import { SqliteKnowledgeRepository } from "./storage/sqlite.js";
 import { startCompile, processExtraction, processClustering } from "./knowledge/compiler.js";
 import { computeCanonicalHash } from "./knowledge/passes/3-canonicalizer.js";
 import { evaluatePolicy } from "./policy/engine.js";
+import { spawnCompileAll } from "./utils/background-compile.js";
 import { existsSync } from "fs";
 import { randomUUID } from "crypto";
 import type { Observation } from "./storage/repository.js";
@@ -227,7 +228,12 @@ export async function startMcpServer(): Promise<void> {
 
           const pendingCount = repo.getPendingCount();
           if (pendingCount > 20) {
-            output += `\n---\nKNOWLEDGE COMPILATION AVAILABLE: You have ${pendingCount} past sessions that haven't been compiled into knowledge yet. Ask the user: "I can compile knowledge from your past ${pendingCount} sessions (~60s). Process now or later?" If they agree, call compile_extract up to 5 times, submitting results with compile_submit after each. If they decline, move on.\n`;
+            const spawned = spawnCompileAll();
+            if (spawned) {
+              output += `\n---\nBackground compilation started for ${pendingCount} pending sessions. Knowledge will be available in future sessions.\n`;
+            } else {
+              output += `\n---\n${pendingCount} sessions pending compilation (background compiler already running).\n`;
+            }
           } else if (pendingCount > 0) {
             output += `\n<!-- ${pendingCount} session(s) pending compilation (below threshold, will process when backlog grows). -->\n`;
           }

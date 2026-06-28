@@ -1,13 +1,11 @@
 import { statSync } from "fs";
 import { basename, dirname } from "path";
 import { getDbPath, isInitialized, getProjectId } from "../utils/paths.js";
-import { findAllClaudeTranscripts, findAllContinueTranscripts } from "../utils/transcript.js";
+import { findAllClaudeTranscripts, findAllContinueTranscripts, findAllCodexTranscripts, findAllRooCodeTranscripts } from "../utils/transcript.js";
 import { SqliteKnowledgeRepository } from "../storage/sqlite.js";
 import { randomUUID } from "crypto";
 
 function inferProjectRootFromTranscriptPath(path: string): string {
-  // Claude transcripts: ~/.claude/projects/<slug>/<id>.jsonl
-  // The slug is a mangled version of the project path (e.g. "-Users-raghav-project")
   const dir = dirname(path);
   const slug = basename(dir);
   if (slug.startsWith("-")) {
@@ -25,6 +23,8 @@ export async function handleSessionStart(): Promise<void> {
   const allTranscripts = [
     ...findAllClaudeTranscripts(),
     ...findAllContinueTranscripts(),
+    ...findAllCodexTranscripts(),
+    ...findAllRooCodeTranscripts(),
   ];
 
   const oneMinuteAgo = Date.now() - 60000;

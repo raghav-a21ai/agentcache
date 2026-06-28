@@ -31,29 +31,38 @@ No `init`. No `setup`. No config. No second command. The install itself:
 ## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Your Machine                              │
-│                                                                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
-│  │  Claude  │  │  Cursor  │  │   Roo    │  │  Codex   │  ...   │
-│  │   Code   │  │          │  │   Code   │  │          │       │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘       │
-│       │              │              │              │              │
-│       └──────────────┴──────────────┴──────────────┘              │
-│                              │                                    │
-│                    MCP Protocol (stdio)                           │
-│                              │                                    │
-│                 ┌────────────┴────────────┐                      │
-│                 │  AgentCache MCP Server   │                      │
-│                 │   (agentcache serve)     │                      │
-│                 └────────────┬────────────┘                      │
-│                              │                                    │
-│                    ┌─────────┴─────────┐                         │
-│                    │ ~/.agentcache/     │                         │
-│                    │  agentcache.db     │                         │
-│                    │  (SQLite + WAL)    │                         │
-│                    └───────────────────┘                         │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                           Your Machine                                │
+│                                                                       │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐            │
+│  │  Claude  │  │  Cursor  │  │   Roo    │  │  Codex   │  ...        │
+│  │   Code   │  │          │  │   Code   │  │          │            │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘            │
+│       │              │              │              │                   │
+│       └──────────────┴──────────────┴──────────────┘                   │
+│                              │                                         │
+│                    MCP Protocol (stdio)                                │
+│                              │                                         │
+│                 ┌────────────┴────────────┐    ┌────────────────────┐ │
+│                 │  AgentCache MCP Server   │    │  agentcache        │ │
+│                 │   (agentcache serve)     │    │  compile-all       │ │
+│                 │                          │    │  (standalone CLI)  │ │
+│                 │  spawns compile-all ─────┼───▶│                    │ │
+│                 │  when pending > 20       │    │  Uses: claude,     │ │
+│                 └────────────┬────────────┘    │  codex, gemini,    │ │
+│                              │                  │  ollama, API keys  │ │
+│                              │                  └─────────┬──────────┘ │
+│                              │                            │            │
+│                    ┌─────────┴────────────────────────────┘            │
+│                    │                                                    │
+│                    ▼                                                    │
+│           ┌───────────────────┐                                        │
+│           │ ~/.agentcache/     │                                        │
+│           │  agentcache.db     │                                        │
+│           │  compile-all.lock  │                                        │
+│           │  (SQLite + WAL)    │                                        │
+│           └───────────────────┘                                        │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ### The Cycle
@@ -92,8 +101,32 @@ AgentCache exposes 8 tools via the Model Context Protocol (prefixed as `mcp--age
 
 ```bash
 agentcache status          # Show knowledge stats for current project
+agentcache compile-all     # Batch-compile all unprocessed transcripts
 agentcache setup           # Re-register with IDEs (only if postinstall failed)
 ```
+
+### `compile-all` — Standalone Batch Compilation
+
+Processes all pending transcripts across every IDE without depending on MCP pipes or active sessions. Runs independently in a terminal.
+
+```bash
+agentcache compile-all
+```
+
+**LLM backend detection** (first available wins):
+1. CLI tools with stored auth: `claude`, `codex`, `gemini`, `copilot`, `aider`, `goose`
+2. Ollama running locally (`localhost:11434`)
+3. `ANTHROPIC_API_KEY` environment variable
+4. `OPENAI_API_KEY` environment variable
+
+No API keys needed if you have any coding CLI installed — it uses their stored authentication.
+
+**Automatic triggers:**
+- Runs as a background process after `npm install -g agentcache` (clears initial backlog)
+- Spawned by the MCP server when pending transcripts exceed 20 (ongoing janitor)
+- Lockfile (`~/.agentcache/compile-all.lock`) prevents concurrent runs
+
+**Transcript sources:** Claude Code, Continue, Codex, Roo Code, Goose
 
 Internal commands (called by hooks automatically, never by users):
 ```bash
@@ -119,9 +152,10 @@ One database per developer (`~/.agentcache/agentcache.db`), not per project. Rul
 
 ### Resilient to Abrupt Exits
 
-Sessions can end without warning (crash, ctrl-c, network drop). AgentCache handles this through:
+Sessions can end without warning (crash, ctrl-c, network drop, MCP pipe death). AgentCache handles this through:
 - **Incremental submission** — observations are saved as they happen, not batched at the end
-- **Transcript recovery** — for Claude Code and Continue, transcripts persist on disk and are compiled next session
+- **Transcript recovery** — transcripts persist on disk across 5 IDEs (Claude Code, Continue, Codex, Roo Code, Goose) and are compiled by `compile-all`
+- **Pipe-independent compilation** — `compile-all` runs as a standalone process, not through MCP stdio pipes that can break during long operations
 - **Pending queue in SQLite** — concurrent access is safe, nothing lost to race conditions
 
 ### Anti-Bloat
@@ -138,14 +172,17 @@ AgentCache prevents knowledge from growing unbounded:
 |-----|-----|-------------|--------------------|----|
 | Claude Code | Yes | Yes (automatic) | Full (JSONL) | Stop, SessionStart, PreToolUse |
 | Cursor | Yes | Yes (automatic) | Incremental only | — |
-| Roo Code | Yes | Yes (automatic) | Incremental only | — |
+| Roo Code | Yes | Yes (automatic) | Full (JSON via compile-all) | — |
 | Windsurf | Yes | Yes (automatic) | Incremental only | — |
 | Continue | Yes | Yes (automatic) | Full (JSON) | — |
-| Codex | Yes | Yes (automatic) | Incremental only | — |
+| Codex | Yes | Yes (automatic) | Full (JSONL via compile-all) | — |
+| Goose | — | — | Full (SQLite via compile-all) | — |
 
 All IDEs are fully auto-approved at install time — no manual steps required.
 
 "Incremental only" means if the agent submits observations during the session, they're saved. If the session terminates before any submission, those observations are lost (no transcript access).
+
+"via compile-all" means `agentcache compile-all` discovers and processes these transcripts in batch, independent of any active MCP session.
 
 ## Data Storage
 
@@ -176,7 +213,9 @@ Extract → Normalize → Canonicalize → Cluster → Detect Contradictions →
                                                             - authority: AUTO/USER
 ```
 
-The compiler is the LLM itself (the agent in your session). AgentCache provides extraction prompts and the agent processes them — no separate API keys or LLM calls needed.
+**Two compilation paths:**
+- **In-session** — the agent in your IDE processes extraction prompts via MCP tools (no separate LLM calls needed)
+- **Batch (`compile-all`)** — runs independently using any available LLM CLI or API, processes the full backlog without depending on active sessions
 
 ## Project Identity
 
@@ -197,7 +236,7 @@ Projects are identified by a hash of their full filesystem path, not just the fo
 | Windsurf | Supported |
 | Continue | Supported |
 | Codex | Supported |
-| Goose (Block) | Coming soon |
+| Goose | Supported (transcript recovery via SQLite) |
 | Aider | Coming soon |
 | GitHub Copilot | Coming soon |
 | Zed AI | Coming soon |

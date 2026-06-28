@@ -1,5 +1,6 @@
 import { readdirSync, statSync, existsSync } from "fs";
 import { join } from "path";
+import { homedir } from "os";
 import { getClaudeTranscriptsDir, getContinueSessionsDir } from "./paths.js";
 import { parseTranscriptAuto } from "./transcript-parsers/index.js";
 
@@ -87,4 +88,57 @@ export function findAllContinueTranscripts(): string[] {
   } catch {
     return [];
   }
+}
+
+export function findAllCodexTranscripts(): string[] {
+  const baseDir = join(homedir(), ".codex", "sessions");
+  if (!existsSync(baseDir)) return [];
+
+  const transcripts: string[] = [];
+  function walkDir(dir: string) {
+    try {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        const stat = statSync(full);
+        if (stat.isDirectory()) {
+          walkDir(full);
+        } else if (entry.endsWith(".jsonl") && stat.size > 100) {
+          transcripts.push(full);
+        }
+      }
+    } catch {}
+  }
+  walkDir(baseDir);
+  return transcripts;
+}
+
+export function findAllRooCodeTranscripts(): string[] {
+  const possibleDirs = [
+    join(homedir(), "Library", "Application Support", "Code", "User", "globalStorage", "rooveterinaryinc.roo-cline", "tasks"),
+    join(homedir(), ".config", "Code", "User", "globalStorage", "rooveterinaryinc.roo-cline", "tasks"),
+  ];
+
+  const transcripts: string[] = [];
+  for (const baseDir of possibleDirs) {
+    if (!existsSync(baseDir)) continue;
+    try {
+      for (const taskDir of readdirSync(baseDir)) {
+        const historyPath = join(baseDir, taskDir, "api_conversation_history.json");
+        if (existsSync(historyPath) && statSync(historyPath).size > 100) {
+          transcripts.push(historyPath);
+        }
+      }
+    } catch {}
+  }
+  return transcripts;
+}
+
+export function findAllGooseSessionIds(): string[] {
+  const dbPath = join(homedir(), ".local", "share", "goose", "sessions", "sessions.db");
+  if (!existsSync(dbPath)) return [];
+  return [dbPath];
+}
+
+export function getGooseDbPath(): string {
+  return join(homedir(), ".local", "share", "goose", "sessions", "sessions.db");
 }

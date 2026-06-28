@@ -69,6 +69,14 @@ program
   });
 
 program
+  .command("compile-all")
+  .description("Batch-compile all unprocessed transcripts using an available LLM CLI")
+  .action(async () => {
+    const { runCompileAll } = await import("./compile-all.js");
+    await runCompileAll();
+  });
+
+program
   .command("status")
   .description("Show AgentCache knowledge stats")
   .action(async () => {

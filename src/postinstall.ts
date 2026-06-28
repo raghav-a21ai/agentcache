@@ -3,6 +3,7 @@ import { getDataDir, getDbPath, migrateFromLegacy } from "./utils/paths.js";
 import { SqliteKnowledgeRepository } from "./storage/sqlite.js";
 import { detectInstalledIdes } from "./utils/ide-detector.js";
 import { registerMcpServer, registerClaudeHooks } from "./utils/ide-registrar.js";
+import { spawnCompileAll } from "./utils/background-compile.js";
 
 if (process.env.CI) {
   process.exit(0);
@@ -29,6 +30,12 @@ try {
     console.error(`agentcache: registered with ${registered.join(", ")}`);
   }
   console.error("agentcache: ready. Knowledge compiles automatically across all sessions.");
+
+  // Spawn background compilation of any existing transcript backlog
+  const spawned = spawnCompileAll();
+  if (spawned) {
+    console.error("agentcache: background compilation started for existing transcripts.");
+  }
 } catch (err: any) {
   console.error(`agentcache postinstall: ${err.message}. Run 'agentcache setup' manually.`);
 }
