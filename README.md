@@ -185,13 +185,58 @@ All IDEs are fully auto-approved at install time — no manual steps required.
 
 "via compile-all" means `agentcache compile-all` discovers and processes these transcripts in batch, independent of any active MCP session.
 
+## Skill Output (Agent Skills Spec)
+
+Compiled knowledge is automatically projected to SKILL.md files — the [Agent Skills open standard](https://agentskills.io) supported by 38+ tools (Claude Code, Cursor, Codex, Gemini CLI, Copilot, Roo Code, and more).
+
+```
+~/.agentcache/skills/developer-knowledge/SKILL.md    # Global: rules + lessons
+<repo>/.agentcache/skills/project-knowledge/SKILL.md  # Project: decisions + context
+```
+
+**Global skill** (`~/.agentcache/skills/`) — your developer identity. Rules and lessons learned across all projects. Auto-discovered by any Agent Skills-compatible tool without MCP.
+
+**Project skill** (`<repo>/.agentcache/skills/`) — project-specific decisions, context, and rules. Git-trackable. Team members get it on clone. **This is team knowledge sharing without a sync server — just git.**
+
+Skills auto-refresh on every compilation. Each file stays under 5,000 tokens (Agent Skills budget limit). High-confidence items appear first.
+
+Example output:
+```markdown
+---
+name: project-knowledge
+description: "Project-specific decisions, rules, context, and lessons — compiled automatically from coding sessions by AgentCache"
+---
+
+## Rules
+
+Follow these without exception:
+
+- Always use path aliases in imports
+- Never commit .env files [ENFORCED]
+
+## Decisions
+
+Architectural choices in effect — do not contradict:
+
+- Using Drizzle ORM over Prisma for raw SQL escape hatches
+- PostgreSQL for all persistent state, Redis for ephemeral cache only
+
+## Current Context
+
+Active project state (may be temporal):
+
+- Migrating from REST to GraphQL, both coexist until Q3
+```
+
 ## Data Storage
 
-All data lives in `~/.agentcache/agentcache.db` (SQLite with WAL mode for concurrent access).
+All data lives in `~/.agentcache/` (SQLite with WAL mode for concurrent access).
 
 ```
 ~/.agentcache/
-└── agentcache.db    # All knowledge, observations, sessions, pending queue
+├── agentcache.db                          # Knowledge, observations, sessions, pending queue
+├── compile-all.lock                       # Prevents concurrent compilation
+└── skills/developer-knowledge/SKILL.md    # Global skill (auto-generated)
 ```
 
 No data leaves your machine. No network calls. No telemetry. No accounts.
@@ -217,6 +262,10 @@ Extract → Normalize → Canonicalize → Cluster → Detect Contradictions →
 **Two compilation paths:**
 - **In-session** — the agent in your IDE processes extraction prompts via MCP tools (no separate LLM calls needed)
 - **Batch (`compile-all`)** — runs independently using any available LLM CLI or API, processes the full backlog without depending on active sessions
+
+**Two output formats:**
+- **MCP injection** — structured context served to agents at session start via `inject_context`
+- **SKILL.md files** — Agent Skills spec-compliant files auto-discovered by 38+ tools without MCP
 
 ## Project Identity
 
