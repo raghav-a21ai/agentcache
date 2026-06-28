@@ -27,6 +27,7 @@ No `init`. No `setup`. No config. No second command. The install itself:
 2. Detects installed IDEs (Claude Code, Cursor, Roo Code, Windsurf, Continue, Codex)
 3. Registers itself as an MCP server in each
 4. Sets up Claude Code hooks for automatic transcript recovery
+5. Spawns `compile-all` in background — compiles your entire transcript history from all IDEs immediately
 
 ## How It Works
 
