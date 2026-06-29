@@ -58,7 +58,7 @@ describe("SqliteKnowledgeRepository", () => {
       title: "Use strict mode",
       content: "Always enable strict mode in TypeScript",
       confidence: "high",
-      observationCount: 1,
+      observationCount: 2,
       authority: "AUTO",
       status: "active",
       enforce: false,
@@ -316,6 +316,46 @@ describe("SqliteKnowledgeRepository", () => {
       const items = repo.getEnforcedRules("test-project");
       expect(items).toHaveLength(2);
       expect(items.every((i) => i.enforce === true)).toBe(true);
+    });
+
+    it("quarantine: getKnowledgeForContext excludes AUTO items with observationCount < 2", () => {
+      repo.saveKnowledgeItem(makeKnowledgeItem({ observationCount: 1, authority: "AUTO", scope: "global" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ observationCount: 2, authority: "AUTO", scope: "global" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ observationCount: 1, authority: "USER", scope: "global" }));
+
+      const items = repo.getKnowledgeForContext("test-project");
+      expect(items).toHaveLength(2);
+      expect(items.every((i) => i.authority === "USER" || i.observationCount >= 2)).toBe(true);
+    });
+
+    it("quarantine: getEnforcedRules excludes AUTO enforced items with observationCount < 2", () => {
+      repo.saveKnowledgeItem(makeKnowledgeItem({ enforce: true, observationCount: 1, authority: "AUTO", scope: "global" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ enforce: true, observationCount: 2, authority: "AUTO", scope: "global" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ enforce: true, observationCount: 1, authority: "USER", scope: "global" }));
+
+      const items = repo.getEnforcedRules("test-project");
+      expect(items).toHaveLength(2);
+    });
+
+    it("getQuarantinedItems returns AUTO items with observationCount < 2", () => {
+      repo.saveKnowledgeItem(makeKnowledgeItem({ observationCount: 1, authority: "AUTO", project: "test-project" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ observationCount: 2, authority: "AUTO", project: "test-project" }));
+      repo.saveKnowledgeItem(makeKnowledgeItem({ observationCount: 1, authority: "USER", project: "test-project" }));
+
+      const quarantined = repo.getQuarantinedItems("test-project");
+      expect(quarantined).toHaveLength(1);
+      expect(quarantined[0].observationCount).toBe(1);
+      expect(quarantined[0].authority).toBe("AUTO");
+    });
+
+    it("promoteItem changes authority to USER", () => {
+      const item = makeKnowledgeItem({ observationCount: 1, authority: "AUTO" });
+      repo.saveKnowledgeItem(item);
+
+      repo.promoteItem(item.id);
+
+      const updated = repo.getKnowledgeItem(item.id)!;
+      expect(updated.authority).toBe("USER");
     });
   });
 

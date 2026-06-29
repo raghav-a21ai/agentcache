@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { existsSync, writeFileSync, readFileSync, unlinkSync } from "fs";
+import { existsSync, writeFileSync, readFileSync, unlinkSync, openSync, closeSync, constants } from "fs";
 import { join } from "path";
 import { getDataDir } from "./paths.js";
 
@@ -66,7 +66,10 @@ export function spawnCompileAll(): boolean {
 export function acquireLock(): boolean {
   if (isLocked()) return false;
   try {
-    writeFileSync(getLockPath(), JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
+    const fd = openSync(getLockPath(), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL);
+    const data = JSON.stringify({ pid: process.pid, startedAt: Date.now() });
+    writeFileSync(fd, data);
+    closeSync(fd);
     return true;
   } catch {
     return false;

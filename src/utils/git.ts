@@ -9,13 +9,16 @@ export interface GitContext {
 
 function run(cmd: string, cwd: string): string {
   try {
-    return execSync(cmd, { cwd, encoding: "utf-8", timeout: 5000 }).trim();
+    return execSync(cmd, { cwd, encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] }).trim();
   } catch {
     return "";
   }
 }
 
 export function getGitContext(projectRoot: string): GitContext {
+  const empty: GitContext = { branch: "", commit: "", recentCommits: [], modifiedFiles: [] };
+  if (!run("git rev-parse --git-dir", projectRoot)) return empty;
+
   const branch = run("git rev-parse --abbrev-ref HEAD", projectRoot);
   const commit = run("git rev-parse --short HEAD", projectRoot);
   const recentCommits = run("git log --oneline -10", projectRoot)

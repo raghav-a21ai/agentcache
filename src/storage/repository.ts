@@ -100,6 +100,7 @@ export interface PendingTranscript {
 export interface KnowledgeRepository {
   saveSession(session: Session): void;
   getSession(id: string): Session | null;
+  updateSessionTranscriptPath(sessionId: string, transcriptPath: string): void;
   getCompiledTranscriptPaths(project: string): string[];
   getAllCompiledTranscriptPaths(): string[];
 

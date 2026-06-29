@@ -62,7 +62,12 @@ function registerClaudeCode(): boolean {
   const claudeJsonPath = join(homedir(), ".claude.json");
   let config: Record<string, any> = {};
   if (existsSync(claudeJsonPath)) {
-    try { config = JSON.parse(readFileSync(claudeJsonPath, "utf-8")); } catch { config = {}; }
+    try {
+      config = JSON.parse(readFileSync(claudeJsonPath, "utf-8"));
+    } catch {
+      // Don't overwrite a file we can't parse — would destroy other registrations
+      return false;
+    }
   }
   if (!config.mcpServers) config.mcpServers = {};
   let serverRegistered = false;
@@ -82,7 +87,11 @@ function registerClaudeCode(): boolean {
   if (existsSync(join(homedir(), ".claude"))) {
     let settings: Record<string, any> = {};
     if (existsSync(settingsPath)) {
-      try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch { settings = {}; }
+      try {
+        settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      } catch {
+        return false;
+      }
     }
     if (!settings.permissions) settings.permissions = {};
     if (!settings.permissions.allow) settings.permissions.allow = [];
@@ -108,7 +117,11 @@ function registerClaudeCode(): boolean {
 function registerMcpJson(ide: IdeConfig): boolean {
   let config: Record<string, any> = {};
   if (existsSync(ide.mcpConfigPath)) {
-    try { config = JSON.parse(readFileSync(ide.mcpConfigPath, "utf-8")); } catch { config = {}; }
+    try {
+      config = JSON.parse(readFileSync(ide.mcpConfigPath, "utf-8"));
+    } catch {
+      return false;
+    }
   }
   if (!config.mcpServers) config.mcpServers = {};
 
@@ -124,10 +137,9 @@ function registerMcpJson(ide: IdeConfig): boolean {
       disabled: false,
     };
   } else {
-    // Cursor, Windsurf — GUI apps, use absolute path + alwaysAllow
-    const agentcacheBin = findAgentcacheScript();
+    // Cursor, Windsurf — use bare command name so nvm/version switches don't break it
     config.mcpServers.agentcache = {
-      command: agentcacheBin,
+      command: "agentcache",
       args: ["serve"],
       alwaysAllow: ALL_TOOLS,
     };
@@ -167,10 +179,9 @@ function registerCodex(ide: IdeConfig): boolean {
     if (content.includes("[mcp_servers.agentcache]")) return false;
   }
 
-  const agentcacheBin = findAgentcacheScript();
   const tomlBlock = `
 [mcp_servers.agentcache]
-command = "${agentcacheBin}"
+command = "agentcache"
 args = ["serve"]
 default_tools_approval_mode = "auto"
 `;
@@ -190,7 +201,11 @@ export function registerClaudeHooks(): boolean {
 
   let settings: Record<string, any> = {};
   if (existsSync(settingsPath)) {
-    try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch { settings = {}; }
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+    } catch {
+      return false;
+    }
   }
 
   if (!settings.hooks) settings.hooks = {};

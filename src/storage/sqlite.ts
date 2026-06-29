@@ -147,6 +147,12 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
     return this.mapSession(row);
   }
 
+  updateSessionTranscriptPath(sessionId: string, transcriptPath: string): void {
+    this.db
+      .prepare("UPDATE sessions SET transcript_path = ? WHERE id = ?")
+      .run(transcriptPath, sessionId);
+  }
+
   getCompiledTranscriptPaths(project: string): string[] {
     const rows = this.db
       .prepare("SELECT transcript_path FROM sessions WHERE project = ? AND transcript_path != ''")
@@ -330,7 +336,9 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
 
     const rows = this.db
       .prepare(
-        `SELECT * FROM knowledge_items WHERE status = 'active' AND (scope = 'global' OR project = ?)
+        `SELECT * FROM knowledge_items WHERE status = 'active'
+         AND (scope = 'global' OR project = ?)
+         AND (authority = 'USER' OR observation_count >= 2)
          ORDER BY
            CASE authority WHEN 'USER' THEN 0 ELSE 1 END,
            CASE confidence WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
@@ -344,7 +352,9 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
   getEnforcedRules(project: string): KnowledgeItem[] {
     const rows = this.db
       .prepare(
-        `SELECT * FROM knowledge_items WHERE enforce = 1 AND status = 'active' AND (scope = 'global' OR project = ?)`
+        `SELECT * FROM knowledge_items WHERE enforce = 1 AND status = 'active'
+         AND (scope = 'global' OR project = ?)
+         AND (authority = 'USER' OR observation_count >= 2)`
       )
       .all(project) as Record<string, unknown>[];
     return rows.map((row) => this.mapKnowledgeItem(row));
@@ -447,6 +457,24 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
       .prepare("SELECT COUNT(*) as count FROM pending_transcripts")
       .get() as { count: number };
     return row.count;
+  }
+
+  getQuarantinedItems(project?: string): KnowledgeItem[] {
+    const sql = project
+      ? `SELECT * FROM knowledge_items WHERE status = 'active' AND authority = 'AUTO' AND observation_count < 2 AND (scope = 'global' OR project = ?) ORDER BY created_at DESC`
+      : `SELECT * FROM knowledge_items WHERE status = 'active' AND authority = 'AUTO' AND observation_count < 2 ORDER BY created_at DESC`;
+    const rows = (project ? this.db.prepare(sql).all(project) : this.db.prepare(sql).all()) as Record<string, unknown>[];
+    return rows.map((row) => this.mapKnowledgeItem(row));
+  }
+
+  promoteItem(id: string): void {
+    this.db.prepare("UPDATE knowledge_items SET authority = 'USER', updated_at = ? WHERE id = ?").run(Date.now(), id);
+  }
+
+  getProjectStats(): { project: string; count: number }[] {
+    return this.db
+      .prepare("SELECT project, COUNT(*) as count FROM knowledge_items WHERE status = 'active' GROUP BY project ORDER BY count DESC")
+      .all() as { project: string; count: number }[];
   }
 
   close(): void {

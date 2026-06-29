@@ -8,9 +8,12 @@ import { startCompile, processExtraction, processClustering } from "./knowledge/
 import { computeCanonicalHash } from "./knowledge/passes/3-canonicalizer.js";
 import { evaluatePolicy } from "./policy/engine.js";
 import { spawnCompileAll } from "./utils/background-compile.js";
-import { existsSync } from "fs";
+import { checkForUpdates } from "./utils/auto-update.js";
+import { existsSync, readFileSync } from "fs";
 import { randomUUID } from "crypto";
 import type { Observation } from "./storage/repository.js";
+
+const PKG_VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")).version;
 
 function defaultScope(type: string): "global" | "project" {
   return (type === "rule" || type === "lesson") ? "global" : "project";
@@ -42,7 +45,7 @@ function getResolvedProjectId(): string {
 
 export async function startMcpServer(): Promise<void> {
   const server = new Server(
-    { name: "agentcache", version: "0.1.0" },
+    { name: "agentcache", version: PKG_VERSION },
     {
       capabilities: { tools: {} },
       instructions: "AgentCache is your knowledge cache. At the START of every session, call inject_context to load compiled rules, lessons, decisions, and context. Submit observations INCREMENTALLY via compile_submit as you learn them — do not wait until session end.",
@@ -51,6 +54,7 @@ export async function startMcpServer(): Promise<void> {
 
   server.oninitialized = async () => {
     await resolveRoots(server);
+    checkForUpdates();
   };
 
   server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
@@ -86,7 +90,6 @@ export async function startMcpServer(): Promise<void> {
                   content: { type: "string", description: "The observation content" },
                   sourceQuote: { type: "string", description: "Optional quote from conversation that triggered this" },
                   confidence: { type: "string", enum: ["high", "medium"], description: "How confident: high=explicitly stated, medium=inferred" },
-                  scope: { type: "string", enum: ["global", "project"], description: "global=applies to all projects, project=this project only. Defaults: rule/lesson->global, decision/context->project" },
                 },
                 required: ["type", "content", "confidence"],
               },
@@ -147,13 +150,12 @@ export async function startMcpServer(): Promise<void> {
       },
       {
         name: "save_observation",
-        description: "Save a single observation immediately with USER authority (never overwritten by compiler). Use for important rules or decisions that should persist permanently.",
+        description: "Save a single observation immediately with USER authority (never overwritten by compiler). Use for important rules or decisions the user explicitly states.",
         inputSchema: {
           type: "object" as const,
           properties: {
             type: { type: "string", enum: ["rule", "lesson", "decision", "context"] },
             content: { type: "string", description: "The observation content" },
-            enforce: { type: "boolean", description: "If true, this rule will BLOCK tool calls that violate it" },
             scope: { type: "string", enum: ["global", "project"], description: "Defaults: rule/lesson->global, decision/context->project" },
             project: { type: "string", description: "Project identifier. Auto-detected if omitted." },
           },
@@ -238,7 +240,12 @@ export async function startMcpServer(): Promise<void> {
             output += `\n<!-- ${pendingCount} session(s) pending compilation (below threshold, will process when backlog grows). -->\n`;
           }
 
-          output += "\n---\nIMPORTANT: Submit observations incrementally as they happen during this session.\nWhen you learn something (rule, lesson, decision, context), call compile_submit immediately.\nDo NOT wait until the end — sessions can terminate without warning.\n";
+          const quarantined = repo.getQuarantinedItems(project);
+          if (quarantined.length > 0) {
+            output += `\n---\n${quarantined.length} observation(s) pending review — run \`agentcache review\` to approve or they'll auto-promote when seen again.\n`;
+          }
+
+          output += "\n---\nIMPORTANT: Use save_observation for decisions the user explicitly states (injected immediately).\nUse compile_submit for patterns you infer (quarantined until confirmed in a second session).\nDo NOT wait until the end — sessions can terminate without warning.\n";
 
           return { content: [{ type: "text" as const, text: output.trim() }] };
         }
@@ -248,12 +255,7 @@ export async function startMcpServer(): Promise<void> {
           const project = args.project || detectedProject;
           const sessionId = `sess_${randomUUID().slice(0, 8)}`;
 
-          const observationsWithScope = args.observations.map((o: any) => ({
-            ...o,
-            scope: o.scope || defaultScope(o.type),
-          }));
-
-          const responseText = JSON.stringify({ observations: observationsWithScope });
+          const responseText = JSON.stringify({ observations: args.observations });
           startCompile([], sessionId, project, projectRoot, repo);
           const result = processExtraction(repo, responseText, sessionId, project, projectRoot);
 
@@ -306,7 +308,7 @@ export async function startMcpServer(): Promise<void> {
         }
 
         case "save_observation": {
-          const args = request.params.arguments as { type: string; content: string; enforce?: boolean; scope?: string; project?: string };
+          const args = request.params.arguments as { type: string; content: string; scope?: string; project?: string };
           const project = args.project || detectedProject;
           const scope = (args.scope || defaultScope(args.type)) as "global" | "project";
           const sessionId = `manual_${randomUUID().slice(0, 8)}`;
@@ -347,7 +349,7 @@ export async function startMcpServer(): Promise<void> {
             observationCount: 1,
             authority: "USER",
             status: "active",
-            enforce: args.enforce || false,
+            enforce: false,
             project,
             scope,
             createdAt: Date.now(),

@@ -1,9 +1,10 @@
 import { execSync, spawnSync } from "child_process";
 import { existsSync, writeFileSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, dirname } from "path";
 import { getDbPath, isInitialized, getProjectId } from "./utils/paths.js";
 import { SqliteKnowledgeRepository } from "./storage/sqlite.js";
+import { getGitRoot } from "./utils/git.js";
 import {
   parseTranscript,
   findAllClaudeTranscripts,
@@ -212,14 +213,37 @@ function discoverAllTranscripts(repo: SqliteKnowledgeRepository): { path: string
   return results;
 }
 
-function inferProjectRoot(path: string): string {
-  if (path.includes(".claude/projects/")) {
-    const slug = path.split(".claude/projects/")[1]?.split("/")[0] || "";
+function inferProjectRoot(transcriptPath: string): string {
+  if (transcriptPath.includes(".claude/projects/")) {
+    const slug = transcriptPath.split(".claude/projects/")[1]?.split("/")[0] || "";
     if (slug.startsWith("-")) return slug.replace(/-/g, "/");
   }
-  if (path.includes(".codex/sessions/")) return process.cwd();
-  if (path.includes("roo-cline/tasks/")) return process.cwd();
+
+  // For Codex/Roo/other transcripts, parse events to find file paths
+  try {
+    const events = parseTranscript(transcriptPath);
+    for (const event of events) {
+      const filePath = extractFilePath(event);
+      if (filePath) {
+        const root = getGitRoot(dirname(filePath));
+        if (root) return root;
+        return dirname(filePath);
+      }
+    }
+  } catch {}
+
   return process.cwd();
+}
+
+function extractFilePath(event: { tool_input?: Record<string, unknown>; content?: string }): string | null {
+  if (event.tool_input) {
+    for (const val of Object.values(event.tool_input)) {
+      if (typeof val === "string" && val.startsWith("/") && val.includes("/") && !val.includes(" ")) {
+        return val;
+      }
+    }
+  }
+  return null;
 }
 
 function processOneTranscript(
@@ -233,21 +257,25 @@ function processOneTranscript(
   if (events.length < 3) return { created: 0, reinforced: 0, skipped: true };
 
   const sessionId = `sess_${randomUUID().slice(0, 8)}`;
-  const state = startCompile(events, sessionId, project, projectRoot, repo, path);
+  const state = startCompile(events, sessionId, project, projectRoot, repo);
 
   const extractionResponse = backend.invoke(state.prompt);
   if (!extractionResponse) return { created: 0, reinforced: 0, skipped: true };
 
   const extractResult = processExtraction(repo, extractionResponse, sessionId, project, projectRoot);
+  // Mark compiled after extraction succeeds — observations are already saved,
+  // retrying would create duplicates and inflate confidence counts
+  repo.updateSessionTranscriptPath(sessionId, path);
 
   if (extractResult.status === "complete") {
     return { created: 0, reinforced: 0, skipped: false };
   }
 
   const clusterResponse = backend.invoke(extractResult.clusteringPrompt);
-  if (!clusterResponse) return { created: 0, reinforced: 0, skipped: true };
+  if (!clusterResponse) return { created: 0, reinforced: 0, skipped: false };
 
   const clusterResult = processClustering(repo, clusterResponse, sessionId, project, projectRoot);
+
   const diag = clusterResult.diagnostics;
   const createdMatch = diag.match(/(\d+) new knowledge/);
   const reinforcedMatch = diag.match(/(\d+) reinforced/);
@@ -292,11 +320,13 @@ function processGooseSessions(
     const project = getProjectId(projectRoot);
     const sessionId = `sess_${randomUUID().slice(0, 8)}`;
 
-    const state = startCompile(events, sessionId, project, projectRoot, repo, markerPath);
+    const state = startCompile(events, sessionId, project, projectRoot, repo);
     const extractionResponse = backend.invoke(state.prompt);
     if (!extractionResponse) continue;
 
     const extractResult = processExtraction(repo, extractionResponse, sessionId, project, projectRoot);
+    repo.updateSessionTranscriptPath(sessionId, markerPath);
+
     if (extractResult.status === "needs_clustering") {
       const clusterResponse = backend.invoke(extractResult.clusteringPrompt);
       if (clusterResponse) {
