@@ -1,18 +1,19 @@
 # AgentCache
 
-**Knowledge cache for AI coding agents** — learns how you work, remembers across sessions, works everywhere.
+Your AI coding agents forget everything between sessions. AgentCache fixes that — it learns what you know, remembers it across sessions, and injects it into every future agent automatically, across every IDE.
 
-AgentCache observes your coding sessions and compiles reusable knowledge (rules, lessons, architectural decisions, context) into a local database. Every future session — regardless of IDE or LLM — gets the benefit of everything you've learned before.
+> "Don't mock the database in integration tests — we got burned when mocked tests passed but prod migration failed"
 
-## Why
+That lesson, learned once, becomes a permanent rule. Every future session with every IDE gets it. You never say it again.
 
-Every AI coding session starts from zero. The agent doesn't know your team's conventions, past mistakes, or architectural decisions. You repeat yourself. Bugs recur. Context is lost.
+## What it does
 
-AgentCache fixes this. It's a persistent knowledge layer that:
-- **Learns** rules, lessons, and decisions from your sessions
+AgentCache observes your coding sessions and compiles reusable knowledge — rules, lessons, architectural decisions, project context — into a local database. Every future session gets that knowledge injected at the start, regardless of IDE or LLM.
+
+- **Learns** from what your agents discover during sessions
 - **Injects** relevant knowledge at the start of every new session
 - **Works everywhere** — any IDE, any LLM, simultaneously
-- **Stays local** — SQLite database on your machine, nothing leaves your disk
+- **Stays local** — SQLite on your machine, nothing leaves your disk
 
 ## Install
 
@@ -20,72 +21,132 @@ AgentCache fixes this. It's a persistent knowledge layer that:
 npm install -g agentcache
 ```
 
-Done. Start a new session in any IDE. AgentCache is already running.
+Done. Start a session in any IDE — AgentCache is already running.
 
-No `init`. No `setup`. No config. No second command. The install itself:
-1. Creates `~/.agentcache/agentcache.db` (your knowledge store)
+No init. No setup. No config. The install:
+
+1. Creates `~/.agentcache/agentcache.db`
 2. Detects installed IDEs (Claude Code, Cursor, Roo Code, Windsurf, Continue, Codex)
 3. Registers itself as an MCP server in each
 4. Sets up Claude Code hooks for automatic transcript recovery
-5. Spawns `compile-all` in background — compiles your entire transcript history from all IDEs immediately
+5. Spawns `compile-all` in background to process your existing transcript history
 
-## How It Works
+## Team knowledge — without a sync server
+
+Compiled project knowledge is written to `<repo>/.agentcache/skills/project-knowledge/SKILL.md`. Commit it. Every teammate gets your team's accumulated decisions and context on clone, automatically picked up by any Agent Skills-compatible tool.
+
+```markdown
+## Decisions
+- Using Drizzle ORM over Prisma for raw SQL escape hatches
+- PostgreSQL for all persistent state, Redis for ephemeral cache only
+
+## Current Context
+- Migrating from REST to GraphQL, both coexist until Q3
+```
+
+No sync server. No accounts. Just git.
+
+## How it works
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                           Your Machine                                 │
 │                                                                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐                │
-│  │  Claude  │  │  Cursor  │  │   Roo    │  │  Codex   │  ...           │
-│  │   Code   │  │          │  │   Code   │  │          │                │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘                │
-│       │             │             │             │                      │
-│       └─────────────┴─────────────┴─────────────┘                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
+│  │  Claude  │  │  Cursor  │  │   Roo    │  │  Codex   │  ...         │
+│  │   Code   │  │          │  │   Code   │  │          │              │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘              │
+│       └─────────────┴─────────────┴─────────────┘                     │
+│                              │ MCP Protocol (stdio)                    │
+│                 ┌────────────┴────────────┐                            │
+│                 │  AgentCache MCP Server  │                            │
+│                 └────────────┬────────────┘                            │
 │                              │                                         │
-│                    MCP Protocol (stdio)                                │
-│                              │                                         │
-│                 ┌────────────┴────────────┐     ┌────────────────────┐ │
-│                 │  AgentCache MCP Server  │     │  agentcache        │ │
-│                 │   (agentcache serve)    │     │  compile-all       │ │
-│                 │                         │     │  (standalone CLI)  │ │
-│                 │  spawns compile-all ────┼────▶│                    │ │
-│                 │  when pending > 20      │     │  Uses: claude,     │ │
-│                 └────────────┬────────────┘     │  codex, gemini,    │ │
-│                              │                  │  ollama, API keys  │ │
-│                              │                  └─────────┬──────────┘ │
-│                              │                            │            │
-│                    ┌─────────┴────────────────────────────┘            │
-│                    │                                                   │
-│                    ▼                                                   │
-│           ┌────────────────────┐                                       │
-│           │ ~/.agentcache/     │                                       │
-│           │  agentcache.db     │                                       │
-│           │  compile-all.lock  │                                       │
-│           │  (SQLite + WAL)    │                                       │
-│           └────────────────────┘                                       │
+│                    ┌─────────┴──────────┐                              │
+│                    │  ~/.agentcache/    │                              │
+│                    │  agentcache.db     │                              │
+│                    │  (SQLite + WAL)    │                              │
+│                    └────────────────────┘                              │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### The Cycle
+### The cycle
 
-1. **Session starts** — agent calls `inject_context` → gets compiled rules, lessons, decisions
+1. **Session starts** — agent calls `inject_context` → receives compiled rules, lessons, decisions
 2. **During session** — agent calls `compile_submit` incrementally as it learns things
-3. **Session ends** — knowledge is already saved. If agent didn't submit (abrupt exit), transcript recovery handles it next session.
+3. **Session ends** — observations are already saved. If the session terminates unexpectedly, transcript recovery handles it next time.
 
-### Knowledge Types
+### Knowledge types
 
 | Type | Scope | Example |
 |------|-------|---------|
-| **Rule** | Global | "Always use snake_case for database columns" |
-| **Lesson** | Global | "Don't mock the database in integration tests — we got burned when mocked tests passed but prod migration failed" |
-| **Decision** | Project | "Using Drizzle ORM over Prisma because we need raw SQL escape hatches" |
-| **Context** | Project | "Currently migrating from REST to GraphQL, both coexist" |
+| Rule | Global | "Always use snake_case for database columns" |
+| Lesson | Global | "Don't mock the database in integration tests — mocked tests passed but prod migration failed" |
+| Decision | Project | "Using Drizzle ORM over Prisma because we need raw SQL escape hatches" |
+| Context | Project | "Currently migrating from REST to GraphQL, both coexist" |
 
-Rules and lessons are **global** — they apply to all your projects. Decisions and context are **project-specific**.
+Rules and lessons are global — they apply to all your projects. Decisions and context are project-scoped.
 
-## MCP Tools
+## Security model
 
-AgentCache exposes 8 tools via the Model Context Protocol (prefixed as `mcp--agentcache--<tool>` in IDEs):
+AgentCache creates a persistent feedback loop: agents write observations → observations compile into knowledge → knowledge injects into future sessions. This is the product's core value **and** its main attack surface. Both are the same thing.
+
+### What the security model guarantees
+
+- **Quarantine by default** — AUTO observations (agent-submitted) are never injected until confirmed across 2+ independent sessions. A single prompt-injected `compile_submit` call cannot poison your knowledge base — it lands in quarantine and requires independent reinforcement before it's ever served.
+- **Enforced rules are human-only** — The enforce mechanism (which blocks agent tool calls) can only be set via CLI (`agentcache add-rule --enforce`). No MCP tool can create policy an agent is subject to.
+- **Scope gate** — Agent-submitted observations are always project-scoped. Promotion to global scope requires explicit human action (USER authority). An agent cannot write a global rule.
+- **Quarantine ≠ absent** — Quarantined items are captured and visible in `agentcache review`. They just don't inject. The review command is how you clear or promote them.
+
+### What the security model does not guarantee
+
+- `compile-all` processes raw transcripts that may contain injected content. Extraction prompt hardening raises the bar, but a sufficiently crafted transcript can still produce a quarantined (non-injecting) entry. Review your pending queue periodically.
+- `locked` mode disables `compile_submit` entirely and requires human-triggered batch compilation. It reduces the attack surface significantly but `compile-all` against a poisoned transcript is still a vector.
+
+### Security modes
+
+Configure in `~/.agentcache/config.json`:
+
+```json
+{ "security": "auto" }
+```
+
+| Mode | Behavior | For |
+|------|----------|-----|
+| `auto` (default) | Quarantine — AUTO items inject after 2+ session confirmations | Solo devs, indie shops |
+| `review` | All new items land in quarantine. Nothing injects until `agentcache review` approves it | BFSI, healthcare, regulated environments |
+| `locked` | `compile_submit` disabled. Compile-all only, human-triggered batch review | Maximum control |
+
+## CLI commands
+
+```bash
+agentcache status          # Knowledge stats for current project
+agentcache doctor          # Diagnose installation problems
+agentcache review          # List quarantined items, approve or reject
+agentcache promote <id>    # Promote a single item past quarantine
+agentcache add-rule "never commit secrets" --enforce  # Create enforced policy (human only)
+agentcache add-rule "use tabs" --global              # Global rule across all projects
+agentcache compile-all     # Batch-compile all unprocessed transcripts
+agentcache setup           # Re-register with IDEs (only if postinstall failed)
+```
+
+## compile-all — batch compilation
+
+Processes all pending transcripts without depending on active MCP sessions.
+
+**LLM backend (first available wins):**
+
+1. CLI tools with stored auth: `claude`, `codex`, `gemini`, `copilot`, `aider`, `goose`
+2. Ollama at `localhost:11434`
+3. `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+
+**Triggers automatically:**
+
+- After `npm install -g agentcache` (clears initial backlog)
+- When pending transcripts exceed 20 (background janitor)
+- Lockfile prevents concurrent runs
+
+## MCP tools
 
 | Tool | Purpose |
 |------|---------|
@@ -96,218 +157,87 @@ AgentCache exposes 8 tools via the Model Context Protocol (prefixed as `mcp--age
 | `enforce` | Check tool calls against enforced policy rules |
 | `save_observation` | Save a permanent observation (USER authority, never auto-deprecated) |
 | `get_knowledge` | Query the knowledge database |
-| `deprecate_knowledge` | Mark knowledge as deprecated when it's no longer valid |
+| `deprecate_knowledge` | Mark knowledge as deprecated |
 
-## CLI Commands
-
-```bash
-agentcache status          # Show knowledge stats for current project
-agentcache compile-all     # Batch-compile all unprocessed transcripts
-agentcache setup           # Re-register with IDEs (only if postinstall failed)
-```
-
-### `compile-all` — Standalone Batch Compilation
-
-Processes all pending transcripts across every IDE without depending on MCP pipes or active sessions. Runs independently in a terminal.
-
-```bash
-agentcache compile-all
-```
-
-**LLM backend detection** (first available wins):
-1. CLI tools with stored auth: `claude`, `codex`, `gemini`, `copilot`, `aider`, `goose`
-2. Ollama running locally (`localhost:11434`)
-3. `ANTHROPIC_API_KEY` environment variable
-4. `OPENAI_API_KEY` environment variable
-
-No API keys needed if you have any coding CLI installed — it uses their stored authentication.
-
-**Automatic triggers:**
-- Runs as a background process after `npm install -g agentcache` (clears initial backlog)
-- Spawned by the MCP server when pending transcripts exceed 20 (ongoing janitor)
-- Lockfile (`~/.agentcache/compile-all.lock`) prevents concurrent runs
-
-**Transcript sources:** Claude Code, Continue, Codex, Roo Code, Goose
-
-Internal commands (called by hooks automatically, never by users):
-```bash
-agentcache serve           # MCP server (IDEs spawn this)
-agentcache compile-session # Stop hook
-agentcache discover        # SessionStart hook
-agentcache enforce         # PreToolUse hook
-```
-
-## Design Principles
-
-### Zero Config
-
-`npm install -g agentcache` is the only step. It detects your IDEs, registers itself, and starts working. No dotfiles in your project. No init commands. No config to maintain.
-
-### Universal
-
-AgentCache uses MCP (Model Context Protocol) as its only interface. Any IDE that supports MCP works. Any LLM — Claude, GPT, Gemini, Qwen, Llama — can use the tools. No IDE-specific code paths. No LLM-specific logic.
-
-### Developer-Scoped
-
-One database per developer (`~/.agentcache/agentcache.db`), not per project. Rules and lessons learned in one project benefit all your projects. Project-specific decisions stay scoped to their project.
-
-### Resilient to Abrupt Exits
-
-Sessions can end without warning (crash, ctrl-c, network drop, MCP pipe death). AgentCache handles this through:
-- **Incremental submission** — observations are saved as they happen, not batched at the end
-- **Transcript recovery** — transcripts persist on disk across 5 IDEs (Claude Code, Continue, Codex, Roo Code, Goose) and are compiled by `compile-all`
-- **Pipe-independent compilation** — `compile-all` runs as a standalone process, not through MCP stdio pipes that can break during long operations
-- **Pending queue in SQLite** — concurrent access is safe, nothing lost to race conditions
-
-### Anti-Bloat
-
-AgentCache prevents knowledge from growing unbounded:
-- **Confidence promotion** — observations need repeated confirmation before becoming high-confidence
-- **Decay** — auto-compiled items not seen in 30 days get archived
-- **Budget caps** — max 20 rules, 10 lessons, 10 decisions, 5 context items injected per session
-- **Priority ranking** — USER authority first, then by confidence and recency
-
-## Supported IDEs
-
-| IDE | MCP | Auto-Approve | Transcript Recovery | Hooks |
-|-----|-----|-------------|--------------------|----|
-| Claude Code | Yes | Yes (automatic) | Full (JSONL) | Stop, SessionStart, PreToolUse |
-| Cursor | Yes | Yes (automatic) | Incremental only | — |
-| Roo Code | Yes | Yes (automatic) | Full (JSON via compile-all) | — |
-| Windsurf | Yes | Yes (automatic) | Incremental only | — |
-| Continue | Yes | Yes (automatic) | Full (JSON) | — |
-| Codex | Yes | Yes (automatic) | Full (JSONL via compile-all) | — |
-| Goose | — | — | Full (SQLite via compile-all) | — |
-
-All IDEs are fully auto-approved at install time — no manual steps required.
-
-"Incremental only" means if the agent submits observations during the session, they're saved. If the session terminates before any submission, those observations are lost (no transcript access).
-
-"via compile-all" means `agentcache compile-all` discovers and processes these transcripts in batch, independent of any active MCP session.
-
-## Skill Output (Agent Skills Spec)
-
-Compiled knowledge is automatically projected to SKILL.md files — the [Agent Skills open standard](https://agentskills.io) supported by 38+ tools (Claude Code, Cursor, Codex, Gemini CLI, Copilot, Roo Code, and more).
-
-```
-~/.agentcache/skills/developer-knowledge/SKILL.md    # Global: rules + lessons
-<repo>/.agentcache/skills/project-knowledge/SKILL.md  # Project: decisions + context
-```
-
-**Global skill** (`~/.agentcache/skills/`) — your developer identity. Rules and lessons learned across all projects. Auto-discovered by any Agent Skills-compatible tool without MCP.
-
-**Project skill** (`<repo>/.agentcache/skills/`) — project-specific decisions, context, and rules. Git-trackable. Team members get it on clone. **This is team knowledge sharing without a sync server — just git.**
-
-Skills auto-refresh on every compilation. Each file stays under 5,000 tokens (Agent Skills budget limit). High-confidence items appear first.
-
-Example output:
-```markdown
----
-name: project-knowledge
-description: "Project-specific decisions, rules, context, and lessons — compiled automatically from coding sessions by AgentCache"
----
-
-## Rules
-
-Follow these without exception:
-
-- Always use path aliases in imports
-- Never commit .env files [ENFORCED]
-
-## Decisions
-
-Architectural choices in effect — do not contradict:
-
-- Using Drizzle ORM over Prisma for raw SQL escape hatches
-- PostgreSQL for all persistent state, Redis for ephemeral cache only
-
-## Current Context
-
-Active project state (may be temporal):
-
-- Migrating from REST to GraphQL, both coexist until Q3
-```
-
-## Data Storage
-
-All data lives in `~/.agentcache/` (SQLite with WAL mode for concurrent access).
-
-```
-~/.agentcache/
-├── agentcache.db                          # Knowledge, observations, sessions, pending queue
-├── compile-all.lock                       # Prevents concurrent compilation
-└── skills/developer-knowledge/SKILL.md    # Global skill (auto-generated)
-```
-
-No data leaves your machine. No network calls. No telemetry. No accounts.
-
-## How Knowledge Compiles
+## How knowledge compiles
 
 ```
 Observations (raw)
     │
     ▼
 Extract → Normalize → Canonicalize → Cluster → Detect Contradictions → Compile
-    │                                                                      │
-    │  "Always use ESLint"                                                 │
-    │  "Always use ESLint"  ──→  deduplicated, confidence promoted         │
-    │  "Use Prettier not ESLint"  ──→  contradiction detected              │
-    │                                                                      ▼
-                                                            Knowledge Items (compiled)
-                                                            - status: active/deprecated/superseded
-                                                            - confidence: low/medium/high
-                                                            - authority: AUTO/USER
+                                                                          │
+                              ┌───────────────────────────────────────────┘
+                              │
+                         PENDING store
+                              │
+                    ┌─────────┴──────────┐
+                    │                    │
+              AUTO items           USER items
+         (quarantine gate)      (inject immediately)
+         2+ sessions before
+            injection
 ```
 
 **Two compilation paths:**
-- **In-session** — the agent in your IDE processes extraction prompts via MCP tools (no separate LLM calls needed)
-- **Batch (`compile-all`)** — runs independently using any available LLM CLI or API, processes the full backlog without depending on active sessions
+
+- **In-session** — agent processes extraction via MCP tools in your IDE
+- **Batch** — `compile-all` runs independently, processes full backlog
 
 **Two output formats:**
-- **MCP injection** — structured context served to agents at session start via `inject_context`
-- **SKILL.md files** — Agent Skills spec-compliant files auto-discovered by 38+ tools without MCP
 
-## Project Identity
+- **MCP injection** — structured context via `inject_context`
+- **SKILL.md** — Agent Skills spec files auto-discovered by 38+ tools without MCP
 
-Projects are identified by a hash of their full filesystem path, not just the folder name. This means:
-- `/work/api` and `/personal/api` are different projects
-- Renaming a folder creates a new project identity
-- Knowledge doesn't leak between same-named projects
+## Design principles
+
+**Zero config** — `npm install -g agentcache` is the only step. No dotfiles, no init, no config to maintain.
+
+**Universal** — MCP is the only interface. Any IDE, any LLM. No IDE-specific code paths.
+
+**Developer-scoped** — One database per developer, not per project. Global knowledge (rules, lessons) benefits all your projects. Project knowledge stays scoped.
+
+**Resilient to abrupt exits** — Incremental submission + transcript recovery + pipe-independent compilation means knowledge survives crashes, ctrl-c, and MCP disconnects.
+
+**Anti-bloat** — Confidence promotion, 30-day decay on unused items, budget caps (20 rules / 10 lessons / 10 decisions / 5 context per session), priority ranking.
+
+## Supported IDEs
+
+| IDE | MCP | Auto-Approve | Transcript Recovery | Hooks |
+|-----|-----|-------------|-------------------|-------|
+| Claude Code | Yes | Yes | Full (JSONL) | Stop, SessionStart, PreToolUse |
+| Cursor | Yes | Yes | Incremental only | — |
+| Roo Code | Yes | Yes | Full (JSON via compile-all) | — |
+| Windsurf | Yes | Yes | Incremental only | — |
+| Continue | Yes | Yes | Full (JSON) | — |
+| Codex | Yes | Yes | Full (JSONL via compile-all) | — |
+| Goose | — | — | Full (SQLite via compile-all) | — |
+| Aider | Coming soon | | | |
+| GitHub Copilot | Coming soon | | | |
+| Zed AI | Coming soon | | | |
+
+## Data storage
+
+```
+~/.agentcache/
+├── agentcache.db                          # Knowledge, observations, sessions, pending queue
+├── config.json                            # Security mode and settings
+├── compile-all.lock                       # Prevents concurrent compilation
+└── skills/developer-knowledge/SKILL.md    # Global skill (auto-generated)
+```
+
+No data leaves your machine. No network calls. No telemetry. No accounts.
+
+### Project identity
+
+Projects are identified by a hash of their full filesystem path. `/work/api` and `/personal/api` are different projects. Knowledge never leaks between same-named projects in different locations.
 
 ## Roadmap
 
-### More IDEs & Coding Agents
-
-| Platform | Status |
-|----------|--------|
-| Claude Code | Supported |
-| Cursor | Supported |
-| Roo Code | Supported |
-| Windsurf | Supported |
-| Continue | Supported |
-| Codex | Supported |
-| Goose | Supported (transcript recovery via SQLite) |
-| Aider | Coming soon |
-| GitHub Copilot | Coming soon |
-| Zed AI | Coming soon |
-
-Any tool that supports MCP can use AgentCache today via `agentcache serve`. Native integrations for the above are planned to ensure zero-config setup.
-
-### Native Plugins
-
-Marketplace listings and deeper UI integrations for all supported IDEs — surfacing knowledge inline, showing compilation status, and providing one-click management of rules and decisions.
-
-### Team Knowledge Sharing
-
-Share compiled knowledge across your team. Rules and lessons that work for one developer benefit everyone.
-
-### Cloud Sync
-
-Sync your knowledge database across machines. Same developer, different computers, same knowledge.
-
-### Analytics Dashboard
-
-Visibility into what AgentCache is learning — compilation stats, knowledge growth, most-referenced rules, and session coverage.
+- **Native plugins** — Marketplace listings and deeper UI integrations for all supported IDEs
+- **Team knowledge sharing** — Share compiled knowledge across your team
+- **Cloud sync** — Same developer, different machines, same knowledge
+- **Analytics dashboard** — Compilation stats, knowledge growth, most-referenced rules
 
 ## Contributing
 

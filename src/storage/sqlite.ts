@@ -326,7 +326,7 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
     return this.mapKnowledgeItem(row);
   }
 
-  getKnowledgeForContext(project: string): KnowledgeItem[] {
+  getKnowledgeForContext(project: string, opts?: { userOnly?: boolean }): KnowledgeItem[] {
     // Run decay: archive AUTO items not seen in 30+ sessions (approx 30 days)
     const decayThreshold = Date.now() - 30 * 24 * 60 * 60 * 1000;
     this.db.prepare(
@@ -334,11 +334,15 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
        WHERE status = 'active' AND authority = 'AUTO' AND last_seen_at < ?`
     ).run(Date.now(), decayThreshold);
 
+    const authorityFilter = opts?.userOnly
+      ? `AND authority = 'USER'`
+      : `AND (authority = 'USER' OR observation_count >= 2)`;
+
     const rows = this.db
       .prepare(
         `SELECT * FROM knowledge_items WHERE status = 'active'
          AND (scope = 'global' OR project = ?)
-         AND (authority = 'USER' OR observation_count >= 2)
+         ${authorityFilter}
          ORDER BY
            CASE authority WHEN 'USER' THEN 0 ELSE 1 END,
            CASE confidence WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
@@ -457,6 +461,12 @@ export class SqliteKnowledgeRepository implements KnowledgeRepository {
       .prepare("SELECT COUNT(*) as count FROM pending_transcripts")
       .get() as { count: number };
     return row.count;
+  }
+
+  grandfatherExistingItems(): void {
+    this.db.prepare(
+      `UPDATE knowledge_items SET observation_count = 2 WHERE authority = 'AUTO' AND observation_count < 2 AND status = 'active'`
+    ).run();
   }
 
   getQuarantinedItems(project?: string): KnowledgeItem[] {

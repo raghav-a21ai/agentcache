@@ -10,6 +10,7 @@ import { evaluatePolicy } from "./policy/engine.js";
 import { spawnCompileAll } from "./utils/background-compile.js";
 import { checkForUpdates } from "./utils/auto-update.js";
 import { existsSync, readFileSync } from "fs";
+import { getConfig, saveConfig } from "./utils/config.js";
 import { randomUUID } from "crypto";
 import type { Observation } from "./storage/repository.js";
 
@@ -43,6 +44,17 @@ function getResolvedProjectId(): string {
   return getProjectId(getResolvedProjectRoot());
 }
 
+function migrateToV04(): void {
+  const config = getConfig();
+  if (config.migrated_v04) return;
+  try {
+    const repo = new SqliteKnowledgeRepository(getDbPath());
+    repo.grandfatherExistingItems();
+    repo.close();
+    saveConfig({ ...config, migrated_v04: true });
+  } catch {}
+}
+
 export async function startMcpServer(): Promise<void> {
   const server = new Server(
     { name: "agentcache", version: PKG_VERSION },
@@ -55,6 +67,7 @@ export async function startMcpServer(): Promise<void> {
   server.oninitialized = async () => {
     await resolveRoots(server);
     checkForUpdates();
+    migrateToV04();
   };
 
   server.setNotificationHandler(RootsListChangedNotificationSchema, async () => {
@@ -205,7 +218,8 @@ export async function startMcpServer(): Promise<void> {
         case "inject_context": {
           const args = (request.params.arguments || {}) as { project?: string };
           const project = args.project || detectedProject;
-          const items = repo.getKnowledgeForContext(project);
+          const securityMode = getConfig().security;
+          const items = repo.getKnowledgeForContext(project, { userOnly: securityMode === "review" });
 
           const rules = items.filter((i) => i.type === "rule").slice(0, 20);
           const lessons = items.filter((i) => i.type === "lesson").slice(0, 10);
@@ -251,6 +265,11 @@ export async function startMcpServer(): Promise<void> {
         }
 
         case "compile_submit": {
+          const securityMode = getConfig().security;
+          if (securityMode === "locked") {
+            return { content: [{ type: "text" as const, text: JSON.stringify({ error: "compile_submit disabled — security mode is 'locked'. Use compile-all for batch processing." }) }], isError: true };
+          }
+
           const args = request.params.arguments as { observations: any[]; project?: string };
           const project = args.project || detectedProject;
           const sessionId = `sess_${randomUUID().slice(0, 8)}`;

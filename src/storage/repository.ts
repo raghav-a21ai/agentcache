@@ -112,7 +112,7 @@ export interface KnowledgeRepository {
   updateKnowledgeItem(id: string, patch: Partial<KnowledgeItem>): void;
   getKnowledgeItems(project: string, filter?: KnowledgeFilter): KnowledgeItem[];
   getKnowledgeItem(id: string): KnowledgeItem | null;
-  getKnowledgeForContext(project: string): KnowledgeItem[];
+  getKnowledgeForContext(project: string, opts?: { userOnly?: boolean }): KnowledgeItem[];
   getEnforcedRules(project: string): KnowledgeItem[];
 
   saveCompileRun(run: CompileRun): void;
